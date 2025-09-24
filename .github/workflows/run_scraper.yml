@@ -24,7 +24,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Dependencies
-        run: pip install telethon geoip2
+        run: pip install telethon geoip2 dnspython
 
       - name: Run Python Scraper
         env:
