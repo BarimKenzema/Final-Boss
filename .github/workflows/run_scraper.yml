@@ -1,0 +1,37 @@
+name: Scrape Telegram for V2Ray Configs
+
+on:
+  schedule:
+    - cron: '30 * * * *' # Runs every hour at 30 minutes past the hour
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Telethon
+        run: pip install telethon
+
+      - name: Run Python Scraper
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+        run: python main.py
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "✅ Automated Telegram Config Update"
+          file_pattern: mobo_net_subs.txt
