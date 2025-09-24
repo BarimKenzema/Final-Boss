@@ -1,12 +1,12 @@
 # FILE: runner.yml (for your SECOND repo: v2ray-refiner)
-# UPDATED SCRIPT
+# UPDATED SCRIPT (Runs every 30 minutes)
 
 name: Refine V2Ray Configs
 
 on:
   schedule:
-    # Runs at 1:00, 5:00, 9:00, 13:00, 17:00, 21:00 UTC
-    - cron: '0 1-23/4 * * *'
+    ### MODIFIED ### - Runs every 30 minutes
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -28,27 +28,10 @@ jobs:
       - name: Install Python Dependencies
         run: pip install -r requirements.txt
 
-      ### NEW STEP: Download and Prepare X-ray ###
-      - name: Download and Prepare X-ray
-        run: |
-          echo "Downloading latest Xray-core..."
-          # The URL for the latest release asset
-          LATEST_XRAY_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip"
-          wget -q -O xray.zip "$LATEST_XRAY_URL"
-          
-          echo "Unzipping Xray-core..."
-          unzip -q xray.zip xray
-          
-          echo "Making Xray executable..."
-          chmod +x xray
-          
-          echo "X-ray is ready at ./xray"
-          ./xray --version
-
       - name: Run Python script
         run: python main.py
 
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "✅ Refined, Categorized & X-ray Tested Configs" # MODIFIED commit message
+          commit_message: "✅ Refined, Categorized & Renamed Configs (IP Converted)"
