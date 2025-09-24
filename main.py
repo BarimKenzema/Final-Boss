@@ -26,13 +26,11 @@ def find_and_reassemble_configs(text):
     # First, find all potential matches
     potential_configs = re.findall(pattern, text)
     
-    # Now, validate and clean them. This is important to filter out broken/truncated links.
+    # Now, validate and clean them.
     valid_configs = []
     for config in potential_configs:
         # A simple but effective validation: A real config is usually long.
-        # This helps filter out truncated links like "vless://..."
         if len(config) > 100:
-            # Some configs might have unwanted characters at the end, clean them up.
             config = config.strip('.,;!?')
             valid_configs.append(config)
             
@@ -56,18 +54,28 @@ async def process_message(message, found_configs):
     if message.text:
         texts_to_scan.append(message.text)
         
-    # 2. Add text from a replied-to message
-    if message.reply_to and message.reply_to.message:
-        replied_message = await message.get_reply_message()
-        if replied_message and replied_message.text:
-            texts_to_scan.append(replied_message.text)
+    # 2. --- THIS IS THE CORRECTED PART ---
+    # Check if this message is a reply to another message
+    if message.is_reply:
+        try:
+            # Fetch the message that was replied to
+            replied_message = await message.get_reply_message()
+            if replied_message and replied_message.text:
+                texts_to_scan.append(replied_message.text)
+        except Exception as e:
+            # Sometimes the replied-to message is deleted or inaccessible
+            print(f"  -> Note: Could not fetch a replied-to message: {e}")
+    # --- END OF CORRECTION ---
 
-    # 3. Add text from a forwarded message
-    if message.forward and message.forward.original_fwd.message:
-        # This part is a bit complex, we just grab text if available
-        fwd_message = await message.get_forward()
-        if fwd_message and fwd_message.text:
-            texts_to_scan.append(fwd_message.text)
+    # 3. Add text from a forwarded message (with safety checks)
+    if message.forward:
+        try:
+            # We don't need the original message, just the text if it's forwarded with the message itself
+            if message.forward.chat and hasattr(message.forward.chat, 'text') and message.forward.chat.text:
+                 texts_to_scan.append(message.forward.chat.text)
+        except Exception:
+            # This part can be complex, so we fail silently if it's an unusual forward
+            pass
 
     # 4. Scan all collected texts
     full_text_to_scan = "\n".join(texts_to_scan)
@@ -80,27 +88,28 @@ async def process_message(message, found_configs):
             new_configs_found += 1
             
     # 5. Check for and download text files
-    if message.document and message.document.mime_type == 'text/plain':
-        print(f"  -> Found a text file: {message.document.attributes[0].file_name}, downloading...")
-        try:
-            # Download the file to memory
-            file_content_bytes = await message.download_media(bytes)
-            file_content = file_content_bytes.decode('utf-8')
-            
-            configs_in_file = find_and_reassemble_configs(file_content)
-            for config in configs_in_file:
-                renamed = rename_config(config, NEW_NAME)
-                if renamed not in found_configs:
-                    found_configs.add(renamed)
-                    new_configs_found += 1
-        except Exception as e:
-            print(f"  -> Could not process file: {e}")
+    if message.document and hasattr(message.document, 'mime_type') and message.document.mime_type == 'text/plain':
+        # Check file size to avoid downloading huge files (e.g., > 1MB)
+        if message.document.size < 1024 * 1024:
+            print(f"  -> Found a text file, downloading...")
+            try:
+                file_content_bytes = await message.download_media(bytes)
+                file_content = file_content_bytes.decode('utf-8', errors='ignore') # Ignore decoding errors
+                
+                configs_in_file = find_and_reassemble_configs(file_content)
+                for config in configs_in_file:
+                    renamed = rename_config(config, NEW_NAME)
+                    if renamed not in found_configs:
+                        found_configs.add(renamed)
+                        new_configs_found += 1
+            except Exception as e:
+                print(f"  -> Could not process file: {e}")
 
     return new_configs_found
 
 
 async def main():
-    print("--- Telegram Scraper v2 (Robust Mode) ---")
+    print("--- Telegram Scraper v2.1 (Robust & Corrected) ---")
     if not all([API_ID, API_HASH, SESSION_STRING]):
         print("FATAL: Required secrets not set."); return
 
@@ -113,7 +122,9 @@ async def main():
     if os.path.exists(OUTPUT_FILE):
         try:
             with open(OUTPUT_FILE, 'r') as f:
-                configs.update(base64.b64decode(f.read()).decode('utf-8').splitlines())
+                content = f.read()
+                if content:
+                    configs.update(base64.b64decode(content).decode('utf-8').splitlines())
             print(f"Loaded {len(configs)} existing configs.")
         except Exception as e:
             print(f"Warning: Could not read existing file: {e}")
@@ -129,21 +140,4 @@ async def main():
             print(f"\n--- Scraping group: {group} (Limit: 300 messages) ---")
             total_new_in_group = 0
             
-            # Use iter_messages to get the last 300 messages
-            async for message in client.iter_messages(group, limit=300):
-                new_found = await process_message(message, configs)
-                total_new_in_group += new_found
-            
-            print(f"Found {total_new_in_group} new configs in this group.")
-            
-    finally:
-        await client.disconnect()
-        print("\nDisconnected from Telegram.")
-    
-    if configs:
-        content = base64.b64encode("\n".join(sorted(list(configs))).encode('utf-8')).decode('utf-8')
-        with open(OUTPUT_FILE, 'w') as f: f.write(content)
-        print(f"Successfully saved {len(configs)} total configs to {OUTPUT_FILE}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            async  
