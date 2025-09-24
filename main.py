@@ -1,7 +1,7 @@
 # FILE: main.py (for your SECOND repo: v2ray-refiner)
-# FINAL SCRIPT v40: Refiner with Corrected Combined Logic
+# FINAL SCRIPT v41: Added X-ray Real-World Testing Stage
 
-import os, json, re, base64, time, traceback, socket
+import os, json, re, base64, time, traceback, socket, tempfile, subprocess ### MODIFIED ###
 import requests
 from urllib.parse import urlparse, parse_qs
 import concurrent.futures
@@ -9,18 +9,22 @@ import geoip2.database
 from dns import resolver, exception as dns_exception
 import ssl
 
-print("--- ADVANCED REFINER & CATEGORIZER v40 START ---")
+print("--- ADVANCED REFINER, CATEGORIZER & X-RAY TESTER v41 START ---") ### MODIFIED ###
 
 # --- CONFIGURATION ---
 CONFIG_CHUNK_SIZE = 444
 MAX_TEST_WORKERS = 100
 TEST_TIMEOUT = 4
 SMALL_COUNTRY_THRESHOLD = 44
+### NEW ###
+XRAY_EXECUTABLE_PATH = "./xray"
+XRAY_TEST_TIMEOUT = 10 # Seconds for X-ray to test a config
 
 # --- HELPER FUNCTIONS (UNCHANGED) ---
 def setup_directories():
     import shutil
-    dirs = ['./splitted', './subscribe', './protocols', './networks', './countries']
+    # ### NEW ### Add xray_tested directory
+    dirs = ['./splitted', './subscribe', './protocols', './networks', './countries', './xray_tested']
     for d in dirs:
         if os.path.exists(d): shutil.rmtree(d)
         os.makedirs(d)
@@ -109,12 +113,119 @@ def write_chunked_subscription_files(base_filepath, configs):
         content = base64.b64encode("\n".join(chunk).encode("utf-8")).decode("utf-8")
         with open(filepath, "w", encoding="utf-8") as f: f.write(content)
 
+
+### NEW ### ----------------------------------------------------------------
+# --- STAGE 5: X-RAY REAL-WORLD TESTING FUNCTIONS ---
+def v2ray_link_to_xray_json(link):
+    """Converts a V2Ray link (VLESS, VMess, Trojan) to a basic X-ray JSON config."""
+    try:
+        parsed = urlparse(link)
+        protocol = parsed.scheme
+        
+        # Base JSON structure for testing
+        config = {
+            "inbounds": [{"protocol": "socks", "listen": "127.0.0.1", "port": 10808}],
+            "outbounds": [{"protocol": protocol, "settings": {}, "streamSettings": {}}]
+        }
+        
+        # Common stream settings
+        qs = parse_qs(parsed.query)
+        network = qs.get('type', ['tcp'])[0]
+        security = qs.get('security', ['none'])[0]
+        
+        config['outbounds'][0]['streamSettings']['network'] = network
+        if security in ['tls', 'reality']:
+            config['outbounds'][0]['streamSettings']['security'] = security
+            tls_settings = {"serverName": qs.get('sni', [parsed.hostname])[0]}
+            if security == 'reality':
+                tls_settings['reality'] = {"publicKey": qs.get('pbk')[0], "shortId": qs.get('sid', [''])[0]}
+            config['outbounds'][0]['streamSettings']['tlsSettings'] = tls_settings
+
+        # Protocol-specific settings
+        if protocol == 'vless':
+            vnext = {"address": parsed.hostname, "port": parsed.port, "users": [{"id": parsed.username, "flow": qs.get('flow', [''])[0]}]}
+            config['outbounds'][0]['settings']['vnext'] = [vnext]
+        elif protocol == 'trojan':
+            config['outbounds'][0]['settings']['servers'] = [{"address": parsed.hostname, "port": parsed.port, "password": parsed.username}]
+        elif protocol == 'vmess':
+            decoded = json.loads(base64.b64decode(link.replace("vmess://", "")).decode())
+            config['outbounds'][0]['settings']['vnext'] = [{"address": decoded['add'], "port": int(decoded['port']), "users": [{"id": decoded['id'], "alterId": int(decoded['aid']), "security": decoded.get('scy', 'auto')}]}]
+            config['outbounds'][0]['streamSettings']['network'] = decoded.get('net', 'tcp')
+            # Add more VMess-specific stream settings if needed
+        else:
+            return None # Unsupported protocol for this function
+
+        # Network-specific stream settings
+        if network == 'ws':
+            config['outbounds'][0]['streamSettings']['wsSettings'] = {"path": qs.get('path', ['/'])[0], "headers": {"Host": qs.get('host', [parsed.hostname])[0]}}
+        elif network == 'grpc':
+            config['outboards'][0]['streamSettings']['grpcSettings'] = {"serviceName": qs.get('serviceName', [''])[0]}
+            
+        return config
+    except Exception:
+        return None
+
+def test_config_with_xray(config_with_title):
+    """Generates a JSON file and tests a config using the X-ray executable."""
+    config_link = config_with_title.split('#')[0]
+    xray_json = v2ray_link_to_xray_json(config_link)
+    
+    if not xray_json:
+        return None # Could not parse the link
+
+    try:
+        # Use a temporary file to avoid race conditions in parallel execution
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as tmp:
+            json.dump(xray_json, tmp)
+            tmp_path = tmp.name
+        
+        # Execute X-ray with a timeout
+        result = subprocess.run(
+            [XRAY_EXECUTABLE_PATH, "test", "-config", tmp_path],
+            capture_output=True, text=True, timeout=XRAY_TEST_TIMEOUT
+        )
+        
+        os.unlink(tmp_path) # Clean up the temporary file
+        
+        # Check if X-ray reported success
+        if result.returncode == 0 and "Configuration OK" in result.stdout:
+            return config_with_title
+            
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        # Ensure cleanup even on error
+        if 'tmp_path' in locals() and os.path.exists(tmp_path): os.unlink(tmp_path)
+        
+    return None
+
+def run_xray_tests(configs):
+    """Runs X-ray tests on a list of configs in parallel."""
+    if not os.path.exists(XRAY_EXECUTABLE_PATH):
+        print(f"FATAL: X-ray executable not found at '{XRAY_EXECUTABLE_PATH}'. Skipping X-ray tests.")
+        return []
+        
+    print(f"\n--- Stage 5: Starting X-ray Real-World Test for {len(configs)} Configs ---")
+    xray_passed_configs = []
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_TEST_WORKERS // 2) as executor: # Use fewer workers for more intensive tests
+        future_to_config = {executor.submit(test_config_with_xray, c): c for c in configs}
+        
+        for i, future in enumerate(concurrent.futures.as_completed(future_to_config)):
+            if (i + 1) % 100 == 0:
+                print(f"X-ray Tested: {i+1}/{len(configs)} | Passed: {len(xray_passed_configs)}")
+            result = future.result()
+            if result:
+                xray_passed_configs.append(result)
+
+    print(f"--- X-ray testing complete. Found {len(xray_passed_configs)} fully working configs. ---")
+    return xray_passed_configs
+
+### END NEW ### -------------------------------------------------------------
+
 # --- MAIN EXECUTION ---
 def main():
     setup_directories()
     
     # --- Stage 1: Download pre-filtered configs from Repo A ---
-    # !!! IMPORTANT: CHANGE 'YOUR_GITHUB_USERNAME' and 'v2ray-collector' !!!
     REFINER_SOURCE_URL = "https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/v2ray-collector/main/filtered-for-refiner.txt"
     
     print(f"--- Downloading PRE-FILTERED configs from collector: {REFINER_SOURCE_URL} ---")
@@ -180,32 +291,43 @@ def main():
     # --- Stage 4: Create Special Combined Subscription (UPDATED LOGIC) ---
     print(f"\n--- Creating Special Combined Subscription File ---")
     
-    # Use a set to automatically handle duplicates
     combined_configs = set()
 
-    # 1. Add ALL REALITY servers
     if by_protocol['reality']:
         print(f"Adding {len(by_protocol['reality'])} REALITY configs to the special mix.")
         combined_configs.update(by_protocol['reality'])
     
-    # 2. Add ALL Turkey servers
     if 'tr' in by_country:
         print(f"Adding {len(by_country['tr'])} Turkey (TR) configs to the special mix.")
         combined_configs.update(by_country['tr'])
 
-    # 3. Add all servers from countries with fewer than 44 configs
     for country_code, config_list in by_country.items():
         if len(config_list) < SMALL_COUNTRY_THRESHOLD:
             print(f"Adding {len(config_list)} configs from small country '{country_code.upper()}' to the special mix.")
             combined_configs.update(config_list)
     
     if combined_configs:
-        # Convert set to a sorted list for consistent output
         final_combined_list = sorted(list(combined_configs))
         print(f"Total unique configs in the special combined file: {len(final_combined_list)}")
         write_chunked_subscription_files('./subscribe/combined_special', final_combined_list)
     else:
         print("No configs met the criteria for the special combined subscription.")
+
+    # ### NEW ### --- Stage 5: X-ray Real-World Testing ---
+    # We will test the 'final_configs' list which contains all geo-titled, latency-checked configs.
+    if final_configs:
+        xray_passed_configs = run_xray_tests(final_configs)
+        if xray_passed_configs:
+            # Sort the final list for consistent output
+            xray_passed_configs.sort()
+            write_chunked_subscription_files('./subscribe/xray_tested', xray_passed_configs)
+            # You can also create categorized files for xray-tested configs if you want here
+            # For example: write_chunked_subscription_files('./xray_tested/reality', [c for c in xray_passed_configs if 'reality' in c])
+        else:
+            print("INFO: No configs passed the final X-ray test.")
+    else:
+        print("INFO: Skipping X-ray test as there are no configs from the previous stage.")
+
 
     print("\n--- SCRIPT FINISHED SUCCESSFULLY ---")
 
