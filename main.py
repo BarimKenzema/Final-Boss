@@ -119,8 +119,8 @@ async def main():
         
         total_new_found = 0
         for group in TARGET_GROUPS:
-            print(f"\n--- Scraping group: {group} (Limit: 300 messages) ---")
-            async for message in client.iter_messages(group, limit=300):
+            print(f"\n--- Scraping group: {group} (Limit: 100 messages) ---")
+            async for message in client.iter_messages(group, limit=100):
                 # Pass both the set and the list to be updated
                 total_new_found += await process_message(message, unique_configs, ordered_configs)
         
