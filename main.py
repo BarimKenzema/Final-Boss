@@ -1,5 +1,5 @@
 # FILE: main.py (for your SECOND repo: v2ray-refiner)
-# FINAL SCRIPT v43: Simplified version with Custom Renaming (X-ray logic removed)
+# FINAL SCRIPT v44: Added Domain-to-IP Conversion
 
 import os, json, re, base64, time, traceback, socket
 import requests
@@ -9,21 +9,19 @@ import geoip2.database
 from dns import resolver, exception as dns_exception
 import ssl
 
-print("--- ADVANCED REFINER, CATEGORIZER & RENAMER v43 START ---")
+print("--- ADVANCED REFINER, CATEGORIZER & IP CONVERTER v44 START ---")
 
 # --- CONFIGURATION ---
-CONFIG_CHUNK_SIZE = 4444
+CONFIG_CHUNK_SIZE = 444
 MAX_TEST_WORKERS = 100
 TEST_TIMEOUT = 4
 SMALL_COUNTRY_THRESHOLD = 44
-# This prefix will be used for all configs in the final output files.
 CONFIG_NAME_PREFIX = "MoboNetPC"
 
 
 # --- HELPER FUNCTIONS ---
 def setup_directories():
     import shutil
-    # Removed './xray_tested' directory
     dirs = ['./splitted', './subscribe', './protocols', './networks', './countries']
     for d in dirs:
         if os.path.exists(d): shutil.rmtree(d)
@@ -48,6 +46,7 @@ def get_ips(node):
     return None
 
 def is_cdn_domain(domain):
+    # This function is now less critical for testing but still useful for sorting
     if domain in cdn_cache: return cdn_cache[domain]
     try:
         res = resolver.Resolver(); res.nameservers = ["1.1.1.1", "8.8.8.8"]
@@ -86,21 +85,49 @@ def advanced_filter_and_test(all_configs):
     print(f"--- Advanced filtering complete. Found {len(final_sorted_configs)} high-quality configs. ---")
     return final_sorted_configs
 
+### MODIFIED ###
 def process_and_title_configs(configs_to_process, geoip_reader):
-    print(f"\n--- Adding Geo-Titles to {len(configs_to_process)} configs... ---"); processed_configs = []
+    """
+    This function now also converts the domain in the config to its resolved IP address.
+    It preserves the original domain in the SNI/Host fields for TLS to work.
+    """
+    print(f"\n--- Converting to IP and Adding Geo-Titles to {len(configs_to_process)} configs... ---")
+    processed_configs = []
     for element in configs_to_process:
         try:
-            host = urlparse(element).hostname; ips = get_ips(host)
-            if not host or not ips: continue
+            host = urlparse(element).hostname
+            ips = get_ips(host)
+            
+            # Skip if host is invalid or cannot be resolved
+            if not host or not ips:
+                continue
+                
+            ip_address = ips[0]
+            
+            # Replace the domain with the IP address in the config string.
+            # Using count=1 ensures we only replace the main server address,
+            # leaving any 'host=' or 'sni=' parameters in the query string untouched.
+            ip_based_config = element.replace(host, ip_address, 1)
+            
             country_code = "XX"
             if geoip_reader:
-                try: country_code = geoip_reader.country(ips[0]).country.iso_code or "XX"
-                except geoip2.errors.AddressNotFoundError: pass
-            clean_config = element.split('#')[0]; title = f"{country_code}-{host}"
-            processed_configs.append(f"{clean_config}#{title}")
-        except Exception: continue
-    print(f"--- Finished titling. Final count: {len(processed_configs)} ---")
+                try:
+                    country_code = geoip_reader.country(ip_address).country.iso_code or "XX"
+                except geoip2.errors.AddressNotFoundError:
+                    pass
+            
+            # The internal title will be used for categorization before being renamed.
+            # Using the IP in the title for consistency.
+            clean_config = ip_based_config.split('#')[0]
+            internal_title = f"{country_code}-{ip_address}"
+            processed_configs.append(f"{clean_config}#{internal_title}")
+            
+        except Exception:
+            continue
+            
+    print(f"--- Finished IP conversion and titling. Final count: {len(processed_configs)} ---")
     return processed_configs
+
 
 def write_chunked_subscription_files(base_filepath, configs):
     os.makedirs(os.path.dirname(base_filepath), exist_ok=True)
@@ -115,12 +142,8 @@ def write_chunked_subscription_files(base_filepath, configs):
 
 # HELPER FUNCTION FOR RENAMING
 def rename_configs_for_output(configs, prefix):
-    """
-    Takes a list of configs and renames them sequentially.
-    Example: [config1, config2] -> ["...#MoboNetPC-01", "...#MoboNetPC-02"]
-    """
     renamed_list = []
-    num_digits = len(str(len(configs))) # For zero-padding (e.g., 01, 02... or 001, 002...)
+    num_digits = len(str(len(configs)))
     for i, config in enumerate(configs):
         base_config = config.split('#')[0]
         new_title = f"{prefix}-{i+1:0{num_digits}d}"
@@ -160,6 +183,8 @@ def main():
     if db_path and os.path.exists(db_path):
         try: geoip_reader = geoip2.database.Reader(db_path)
         except Exception as e: print(f"ERROR: Could not load GeoIP database. Error: {e}")
+    
+    # This now returns IP-based configs with geo-titles
     final_configs = process_and_title_configs(high_quality_configs, geoip_reader)
 
     # --- Stage 3: Perform standard categorization (using geo-titles) ---
@@ -171,6 +196,7 @@ def main():
         try:
             proto = config.split('://')[0]
             if proto in by_protocol: by_protocol[proto].append(config)
+            # 'reality' keyword is in query params, not affected by IP conversion
             if 'reality' in config.lower(): by_protocol['reality'].append(config)
             parsed = urlparse(config); net = parse_qs(parsed.query).get('type', ['tcp'])[0].lower()
             if net in by_network: by_network[net].append(config)
@@ -206,13 +232,10 @@ def main():
     if combined_configs:
         final_combined_list = sorted(list(combined_configs))
         print(f"Total unique configs in the special combined file: {len(final_combined_list)}")
-        # Rename before writing
         renamed_list = rename_configs_for_output(final_combined_list, f"{CONFIG_NAME_PREFIX}-Special")
         write_chunked_subscription_files('./subscribe/combined_special', renamed_list)
     else:
         print("No configs met the criteria for the special combined subscription.")
-    
-    # X-ray testing stage has been removed.
 
     print("\n--- SCRIPT FINISHED SUCCESSFULLY ---")
 
