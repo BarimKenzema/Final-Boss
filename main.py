@@ -133,7 +133,7 @@ def main():
     setup_directories()
     
     # --- Stage 1: Download pre-filtered configs from Repo A ---
-    REFINER_SOURCE_URL = "https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/v2ray-collector/main/filtered-for-refiner.txt"
+    REFINER_SOURCE_URL = "https://raw.githubusercontent.com/BarimKenzema/Haj-Karim/refs/heads/main/filtered-for-refiner.txt"
     print(f"--- Downloading PRE-FILTERED configs from collector: {REFINER_SOURCE_URL} ---")
     configs_to_test = set()
     try:
