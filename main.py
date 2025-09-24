@@ -1,244 +1,74 @@
-# FILE: main.py (for your SECOND repo: v2ray-refiner)
-# FINAL SCRIPT v44: Added Domain-to-IP Conversion
-
-import os, json, re, base64, time, traceback, socket
-import requests
-from urllib.parse import urlparse, parse_qs
-import concurrent.futures
-import geoip2.database
-from dns import resolver, exception as dns_exception
-import ssl
-
-print("--- ADVANCED REFINER, CATEGORIZER & IP CONVERTER v44 START ---")
+import re, base64, os, asyncio
+from telethon.sync import TelegramClient
+from urllib.parse import quote
 
 # --- CONFIGURATION ---
-CONFIG_CHUNK_SIZE = 444
-MAX_TEST_WORKERS = 100
-TEST_TIMEOUT = 4
-SMALL_COUNTRY_THRESHOLD = 44
-CONFIG_NAME_PREFIX = "MoboNetPC"
+API_ID = os.environ.get('API_ID')
+API_HASH = os.environ.get('API_HASH')
+SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
+SESSION_NAME = 'my_telegram_session'
 
+TARGET_GROUPS = [ 'PrivateConfig' ] # Add your public group/channel usernames here
+OUTPUT_FILE = 'mobo_net_subs.txt'
+NEW_NAME = '@MoboNetPC'
+# --- END OF CONFIGURATION ---
 
-# --- HELPER FUNCTIONS ---
-def setup_directories():
-    import shutil
-    dirs = ['./splitted', './subscribe', './protocols', './networks', './countries']
-    for d in dirs:
-        if os.path.exists(d): shutil.rmtree(d)
-        os.makedirs(d)
-    print("INFO: All necessary directories are clean.")
+def find_configs(text):
+    if not text: return []
+    return re.findall(r'(vless|vmess|trojan|ss)://[^\s<>"\'`]+', text)
 
-dns_cache = {}
-cdn_cache = {}
+def rename_config(link, name):
+    return f"{link.split('#')[0]}#{quote(name)}"
 
-def get_ips(node):
-    if node in dns_cache: return dns_cache[node]
+async def main():
+    print("--- Telegram Scraper (User Account Mode on GitHub) ---")
+    if not all([API_ID, API_HASH, SESSION_STRING]):
+        print("FATAL: Required secrets not set.")
+        return
+
     try:
-        import ipaddress
-        if ipaddress.ip_address(node):
-            dns_cache[node] = [node]; return [node]
-    except ValueError:
+        with open(f"{SESSION_NAME}.session", 'wb') as f:
+            f.write(base64.b64decode(SESSION_STRING))
+        print("Session file created from secret.")
+    except Exception as e:
+        print(f"FATAL: Could not write session file. Error: {e}"); return
+
+    configs = set()
+    if os.path.exists(OUTPUT_FILE):
         try:
-            res = resolver.Resolver(); res.nameservers = ["8.8.8.8", "1.1.1.1"]
-            ips = [str(rdata) for rdata in res.resolve(node, 'A', raise_on_no_answer=False) or []]
-            if ips: dns_cache[node] = ips; return ips
-        except (dns_exception.DNSException, Exception): return None
-    return None
-
-def is_cdn_domain(domain):
-    # This function is now less critical for testing but still useful for sorting
-    if domain in cdn_cache: return cdn_cache[domain]
-    try:
-        res = resolver.Resolver(); res.nameservers = ["1.1.1.1", "8.8.8.8"]
-        parts = domain.split('.'); base_domain = '.'.join(parts[-2:]) if len(parts) > 1 else domain
-        ns_records = res.resolve(base_domain, 'NS')
-        for record in ns_records:
-            if 'cloudflare.com' in str(record).lower():
-                cdn_cache[domain] = True; return True
-    except (dns_exception.DNSException, Exception): pass
-    cdn_cache[domain] = False; return False
-
-def test_single_config(config):
-    try:
-        parsed_url = urlparse(config); host = parsed_url.hostname; port = parsed_url.port or 443
-        if not host: return None
-        is_cdn = is_cdn_domain(host)
-        start_time = time.time()
-        context = ssl.create_default_context(); context.check_hostname = False; context.verify_mode = ssl.CERT_NONE
-        with socket.create_connection((host, port), timeout=TEST_TIMEOUT) as sock:
-            with context.wrap_socket(sock, server_hostname=host) as ssock:
-                latency = int((time.time() - start_time) * 1000)
-                return {"config": config, "host": host, "latency": latency, "is_cdn": is_cdn, "protocol": parsed_url.scheme}
-    except (socket.timeout, ConnectionRefusedError, OSError, ssl.SSLError, Exception): return None
-
-def advanced_filter_and_test(all_configs):
-    print(f"\n--- Advanced Filtering & Testing {len(all_configs)} Pre-Filtered Configs ---")
-    unique_configs = list(set(all_configs)); good_configs = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_TEST_WORKERS) as executor:
-        future_to_config = {executor.submit(test_single_config, config): config for config in unique_configs}
-        for i, future in enumerate(concurrent.futures.as_completed(future_to_config)):
-            if (i + 1) % 500 == 0: print(f"Tested {i+1}/{len(unique_configs)} | Promising: {len(good_configs)}")
-            result = future.result()
-            if result: good_configs.append(result)
-    good_configs.sort(key=lambda x: (not x['is_cdn'], x['protocol'] != 'reality', x['latency']))
-    final_sorted_configs = [item['config'] for item in good_configs]
-    print(f"--- Advanced filtering complete. Found {len(final_sorted_configs)} high-quality configs. ---")
-    return final_sorted_configs
-
-### MODIFIED ###
-def process_and_title_configs(configs_to_process, geoip_reader):
-    """
-    This function now also converts the domain in the config to its resolved IP address.
-    It preserves the original domain in the SNI/Host fields for TLS to work.
-    """
-    print(f"\n--- Converting to IP and Adding Geo-Titles to {len(configs_to_process)} configs... ---")
-    processed_configs = []
-    for element in configs_to_process:
-        try:
-            host = urlparse(element).hostname
-            ips = get_ips(host)
-            
-            # Skip if host is invalid or cannot be resolved
-            if not host or not ips:
-                continue
-                
-            ip_address = ips[0]
-            
-            # Replace the domain with the IP address in the config string.
-            # Using count=1 ensures we only replace the main server address,
-            # leaving any 'host=' or 'sni=' parameters in the query string untouched.
-            ip_based_config = element.replace(host, ip_address, 1)
-            
-            country_code = "XX"
-            if geoip_reader:
-                try:
-                    country_code = geoip_reader.country(ip_address).country.iso_code or "XX"
-                except geoip2.errors.AddressNotFoundError:
-                    pass
-            
-            # The internal title will be used for categorization before being renamed.
-            # Using the IP in the title for consistency.
-            clean_config = ip_based_config.split('#')[0]
-            internal_title = f"{country_code}-{ip_address}"
-            processed_configs.append(f"{clean_config}#{internal_title}")
-            
-        except Exception:
-            continue
-            
-    print(f"--- Finished IP conversion and titling. Final count: {len(processed_configs)} ---")
-    return processed_configs
-
-
-def write_chunked_subscription_files(base_filepath, configs):
-    os.makedirs(os.path.dirname(base_filepath), exist_ok=True)
-    if not configs:
-        with open(base_filepath, "w") as f: f.write(""); return
-    chunks = [configs[i:i + CONFIG_CHUNK_SIZE] for i in range(0, len(configs), CONFIG_CHUNK_SIZE)]
-    for i, chunk in enumerate(chunks):
-        filename = os.path.basename(base_filepath)
-        filepath = base_filepath if i == 0 else os.path.join(os.path.dirname(base_filepath), f"{filename}{i + 1}")
-        content = base64.b64encode("\n".join(chunk).encode("utf-8")).decode("utf-8")
-        with open(filepath, "w", encoding="utf-8") as f: f.write(content)
-
-# HELPER FUNCTION FOR RENAMING
-def rename_configs_for_output(configs, prefix):
-    renamed_list = []
-    num_digits = len(str(len(configs)))
-    for i, config in enumerate(configs):
-        base_config = config.split('#')[0]
-        new_title = f"{prefix}-{i+1:0{num_digits}d}"
-        renamed_list.append(f"{base_config}#{new_title}")
-    return renamed_list
-
-
-# --- MAIN EXECUTION ---
-def main():
-    setup_directories()
+            with open(OUTPUT_FILE, 'r') as f:
+                configs.update(base64.b64decode(f.read()).decode('utf-8').splitlines())
+            print(f"Loaded {len(configs)} existing configs.")
+        except Exception as e:
+            print(f"Warning: Could not read existing file: {e}")
     
-    # --- Stage 1: Download pre-filtered configs from Repo A ---
-    REFINER_SOURCE_URL = "https://raw.githubusercontent.com/BarimKenzema/Haj-Karim/refs/heads/main/filtered-for-refiner.txt"
-    print(f"--- Downloading PRE-FILTERED configs from collector: {REFINER_SOURCE_URL} ---")
-    configs_to_test = set()
+    client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
     try:
-        response = requests.get(REFINER_SOURCE_URL, timeout=20)
-        response.raise_for_status()
-        configs_text = response.text
-        configs_to_test.update(line.strip() for line in configs_text.splitlines() if line.strip())
-        print(f"Successfully collected {len(configs_to_test)} pre-filtered configs to test.")
-    except requests.exceptions.RequestException as e: print(f"FATAL: Could not download configs from the collector repo. Error: {e}"); return
-    if not configs_to_test: print("FATAL: Config source file was empty. Exiting."); return
-
-    # --- Stage 2: Run advanced tests and add geo-titles ---
-    db_path = "./geoip.mmdb"
-    if not os.path.exists(db_path):
-        print("INFO: GeoIP database not found. Downloading...")
-        try:
-            r = requests.get("https://git.io/GeoLite2-Country.mmdb", allow_redirects=True)
-            with open(db_path, 'wb') as f: f.write(r.content)
-            print("INFO: GeoIP database downloaded successfully.")
-        except Exception as e: print(f"ERROR: Could not download GeoIP database. Error: {e}"); db_path = None
-    high_quality_configs = advanced_filter_and_test(list(configs_to_test))
-    if not high_quality_configs: print("INFO: No high-quality configs found after advanced testing. Exiting."); return
-    geoip_reader = None
-    if db_path and os.path.exists(db_path):
-        try: geoip_reader = geoip2.database.Reader(db_path)
-        except Exception as e: print(f"ERROR: Could not load GeoIP database. Error: {e}")
+        await client.connect()
+        if not await client.is_user_authorized():
+            print("FATAL: Session is not authorized. Please generate a new session file."); return
+        print("Successfully connected to Telegram.")
+        
+        for group in TARGET_GROUPS:
+            print(f"\n--- Scraping group: {group} ---")
+            new = 0
+            async for msg in client.iter_messages(group, limit=200):
+                if msg and msg.text:
+                    for cfg in find_configs(msg.text):
+                        renamed = rename_config(cfg, NEW_NAME)
+                        if renamed not in configs:
+                            configs.add(renamed)
+                            new += 1
+            print(f"Found {new} new configs.")
+    finally:
+        await client.disconnect()
+        print("\nDisconnected from Telegram.")
     
-    # This now returns IP-based configs with geo-titles
-    final_configs = process_and_title_configs(high_quality_configs, geoip_reader)
-
-    # --- Stage 3: Perform standard categorization (using geo-titles) ---
-    print("\n--- Performing Standard Categorization ---")
-    by_protocol = {p: [] for p in ["vless", "vmess", "trojan", "ss", "reality"]}
-    by_network = {'tcp': [], 'ws': [], 'grpc': []}
-    by_country = {}
-    for config in final_configs:
-        try:
-            proto = config.split('://')[0]
-            if proto in by_protocol: by_protocol[proto].append(config)
-            # 'reality' keyword is in query params, not affected by IP conversion
-            if 'reality' in config.lower(): by_protocol['reality'].append(config)
-            parsed = urlparse(config); net = parse_qs(parsed.query).get('type', ['tcp'])[0].lower()
-            if net in by_network: by_network[net].append(config)
-            country_code = parsed.fragment.split('-')[0].lower()
-            if country_code:
-                if country_code not in by_country: by_country[country_code] = []
-                by_country[country_code].append(config)
-        except Exception: continue
-
-    # Write standard category files with new names
-    print("\n--- Writing Categorized Subscription Files ---")
-    for p, clist in by_protocol.items():
-        if clist: write_chunked_subscription_files(f'./protocols/{p}', rename_configs_for_output(clist, f"{CONFIG_NAME_PREFIX}-{p.upper()}"))
-    for n, clist in by_network.items():
-        if clist: write_chunked_subscription_files(f'./networks/{n}', rename_configs_for_output(clist, f"{CONFIG_NAME_PREFIX}-{n.upper()}"))
-    for c, clist in by_country.items():
-        if clist: write_chunked_subscription_files(f'./countries/{c}', rename_configs_for_output(clist, f"{CONFIG_NAME_PREFIX}-{c.upper()}"))
-
-    # --- Stage 4: Create Special Combined Subscription (using geo-titles) ---
-    print(f"\n--- Creating Special Combined Subscription File ---")
-    combined_configs = set()
-    if by_protocol['reality']:
-        print(f"Adding {len(by_protocol['reality'])} REALITY configs to the special mix.")
-        combined_configs.update(by_protocol['reality'])
-    if 'tr' in by_country:
-        print(f"Adding {len(by_country['tr'])} Turkey (TR) configs to the special mix.")
-        combined_configs.update(by_country['tr'])
-    for country_code, config_list in by_country.items():
-        if len(config_list) < SMALL_COUNTRY_THRESHOLD:
-            print(f"Adding {len(config_list)} configs from small country '{country_code.upper()}' to the special mix.")
-            combined_configs.update(config_list)
-    
-    if combined_configs:
-        final_combined_list = sorted(list(combined_configs))
-        print(f"Total unique configs in the special combined file: {len(final_combined_list)}")
-        renamed_list = rename_configs_for_output(final_combined_list, f"{CONFIG_NAME_PREFIX}-Special")
-        write_chunked_subscription_files('./subscribe/combined_special', renamed_list)
-    else:
-        print("No configs met the criteria for the special combined subscription.")
-
-    print("\n--- SCRIPT FINISHED SUCCESSFULLY ---")
+    if configs:
+        content = base64.b64encode("\n".join(sorted(list(configs))).encode('utf-8')).decode('utf-8')
+        with open(OUTPUT_FILE, 'w') as f:
+            f.write(content)
+        print(f"Successfully saved {len(configs)} total configs to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
-    try: main()
-    except Exception: print(f"\n--- FATAL UNHANDLED ERROR IN MAIN ---"); traceback.print_exc(); exit(1)
+    asyncio.run(main())
