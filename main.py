@@ -1,7 +1,7 @@
 # FILE: main.py (for your SECOND repo: v2ray-refiner)
-# FINAL SCRIPT v42: Added Custom Renaming for All Output Files
+# FINAL SCRIPT v43: Simplified version with Custom Renaming (X-ray logic removed)
 
-import os, json, re, base64, time, traceback, socket, tempfile, subprocess
+import os, json, re, base64, time, traceback, socket
 import requests
 from urllib.parse import urlparse, parse_qs
 import concurrent.futures
@@ -9,16 +9,13 @@ import geoip2.database
 from dns import resolver, exception as dns_exception
 import ssl
 
-print("--- ADVANCED REFINER, CATEGORIZER & X-RAY TESTER v42 START ---")
+print("--- ADVANCED REFINER, CATEGORIZER & RENAMER v43 START ---")
 
 # --- CONFIGURATION ---
 CONFIG_CHUNK_SIZE = 4444
 MAX_TEST_WORKERS = 100
 TEST_TIMEOUT = 4
 SMALL_COUNTRY_THRESHOLD = 44
-XRAY_EXECUTABLE_PATH = "./xray"
-XRAY_TEST_TIMEOUT = 10 # Seconds for X-ray to test a config
-### NEW ###
 # This prefix will be used for all configs in the final output files.
 CONFIG_NAME_PREFIX = "MoboNetPC"
 
@@ -26,7 +23,8 @@ CONFIG_NAME_PREFIX = "MoboNetPC"
 # --- HELPER FUNCTIONS ---
 def setup_directories():
     import shutil
-    dirs = ['./splitted', './subscribe', './protocols', './networks', './countries', './xray_tested']
+    # Removed './xray_tested' directory
+    dirs = ['./splitted', './subscribe', './protocols', './networks', './countries']
     for d in dirs:
         if os.path.exists(d): shutil.rmtree(d)
         os.makedirs(d)
@@ -115,7 +113,7 @@ def write_chunked_subscription_files(base_filepath, configs):
         content = base64.b64encode("\n".join(chunk).encode("utf-8")).decode("utf-8")
         with open(filepath, "w", encoding="utf-8") as f: f.write(content)
 
-### NEW HELPER FUNCTION FOR RENAMING ###
+# HELPER FUNCTION FOR RENAMING
 def rename_configs_for_output(configs, prefix):
     """
     Takes a list of configs and renames them sequentially.
@@ -129,62 +127,6 @@ def rename_configs_for_output(configs, prefix):
         renamed_list.append(f"{base_config}#{new_title}")
     return renamed_list
 
-# --- X-RAY REAL-WORLD TESTING FUNCTIONS ---
-def v2ray_link_to_xray_json(link):
-    try:
-        parsed = urlparse(link); protocol = parsed.scheme
-        config = {"inbounds": [{"protocol": "socks", "listen": "127.0.0.1", "port": 10808}], "outbounds": [{"protocol": protocol, "settings": {}, "streamSettings": {}}]}
-        qs = parse_qs(parsed.query); network = qs.get('type', ['tcp'])[0]; security = qs.get('security', ['none'])[0]
-        config['outbounds'][0]['streamSettings']['network'] = network
-        if security in ['tls', 'reality']:
-            config['outbounds'][0]['streamSettings']['security'] = security
-            tls_settings = {"serverName": qs.get('sni', [parsed.hostname])[0]}
-            if security == 'reality':
-                tls_settings['reality'] = {"publicKey": qs.get('pbk')[0], "shortId": qs.get('sid', [''])[0]}
-            config['outbounds'][0]['streamSettings']['tlsSettings'] = tls_settings
-        if protocol == 'vless':
-            vnext = {"address": parsed.hostname, "port": parsed.port, "users": [{"id": parsed.username, "flow": qs.get('flow', [''])[0]}]}
-            config['outbounds'][0]['settings']['vnext'] = [vnext]
-        elif protocol == 'trojan':
-            config['outbounds'][0]['settings']['servers'] = [{"address": parsed.hostname, "port": parsed.port, "password": parsed.username}]
-        elif protocol == 'vmess':
-            decoded = json.loads(base64.b64decode(link.replace("vmess://", "")).decode())
-            config['outbounds'][0]['settings']['vnext'] = [{"address": decoded['add'], "port": int(decoded['port']), "users": [{"id": decoded['id'], "alterId": int(decoded['aid']), "security": decoded.get('scy', 'auto')}]}]
-            config['outbounds'][0]['streamSettings']['network'] = decoded.get('net', 'tcp')
-        else: return None
-        if network == 'ws':
-            config['outbounds'][0]['streamSettings']['wsSettings'] = {"path": qs.get('path', ['/'])[0], "headers": {"Host": qs.get('host', [parsed.hostname])[0]}}
-        elif network == 'grpc':
-            config['outbounds'][0]['streamSettings']['grpcSettings'] = {"serviceName": qs.get('serviceName', [''])[0]}
-        return config
-    except Exception: return None
-
-def test_config_with_xray(config_with_title):
-    config_link = config_with_title.split('#')[0]; xray_json = v2ray_link_to_xray_json(config_link)
-    if not xray_json: return None
-    try:
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as tmp:
-            json.dump(xray_json, tmp); tmp_path = tmp.name
-        result = subprocess.run([XRAY_EXECUTABLE_PATH, "test", "-config", tmp_path], capture_output=True, text=True, timeout=XRAY_TEST_TIMEOUT)
-        os.unlink(tmp_path)
-        if result.returncode == 0 and "Configuration OK" in result.stdout: return config_with_title
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-        if 'tmp_path' in locals() and os.path.exists(tmp_path): os.unlink(tmp_path)
-    return None
-
-def run_xray_tests(configs):
-    if not os.path.exists(XRAY_EXECUTABLE_PATH):
-        print(f"FATAL: X-ray executable not found at '{XRAY_EXECUTABLE_PATH}'. Skipping X-ray tests."); return []
-    print(f"\n--- Stage 5: Starting X-ray Real-World Test for {len(configs)} Configs ---")
-    xray_passed_configs = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_TEST_WORKERS // 2) as executor:
-        future_to_config = {executor.submit(test_config_with_xray, c): c for c in configs}
-        for i, future in enumerate(concurrent.futures.as_completed(future_to_config)):
-            if (i + 1) % 100 == 0: print(f"X-ray Tested: {i+1}/{len(configs)} | Passed: {len(xray_passed_configs)}")
-            result = future.result()
-            if result: xray_passed_configs.append(result)
-    print(f"--- X-ray testing complete. Found {len(xray_passed_configs)} fully working configs. ---")
-    return xray_passed_configs
 
 # --- MAIN EXECUTION ---
 def main():
@@ -238,9 +180,42 @@ def main():
                 by_country[country_code].append(config)
         except Exception: continue
 
-    ### MODIFIED ### --- Write standard category files with new names ---
+    # Write standard category files with new names
     print("\n--- Writing Categorized Subscription Files ---")
     for p, clist in by_protocol.items():
         if clist: write_chunked_subscription_files(f'./protocols/{p}', rename_configs_for_output(clist, f"{CONFIG_NAME_PREFIX}-{p.upper()}"))
     for n, clist in by_network.items():
-        if clist: write_chunked_subscription_files(f'./networks/{n}', rename_configs_for_output(clist, 
+        if clist: write_chunked_subscription_files(f'./networks/{n}', rename_configs_for_output(clist, f"{CONFIG_NAME_PREFIX}-{n.upper()}"))
+    for c, clist in by_country.items():
+        if clist: write_chunked_subscription_files(f'./countries/{c}', rename_configs_for_output(clist, f"{CONFIG_NAME_PREFIX}-{c.upper()}"))
+
+    # --- Stage 4: Create Special Combined Subscription (using geo-titles) ---
+    print(f"\n--- Creating Special Combined Subscription File ---")
+    combined_configs = set()
+    if by_protocol['reality']:
+        print(f"Adding {len(by_protocol['reality'])} REALITY configs to the special mix.")
+        combined_configs.update(by_protocol['reality'])
+    if 'tr' in by_country:
+        print(f"Adding {len(by_country['tr'])} Turkey (TR) configs to the special mix.")
+        combined_configs.update(by_country['tr'])
+    for country_code, config_list in by_country.items():
+        if len(config_list) < SMALL_COUNTRY_THRESHOLD:
+            print(f"Adding {len(config_list)} configs from small country '{country_code.upper()}' to the special mix.")
+            combined_configs.update(config_list)
+    
+    if combined_configs:
+        final_combined_list = sorted(list(combined_configs))
+        print(f"Total unique configs in the special combined file: {len(final_combined_list)}")
+        # Rename before writing
+        renamed_list = rename_configs_for_output(final_combined_list, f"{CONFIG_NAME_PREFIX}-Special")
+        write_chunked_subscription_files('./subscribe/combined_special', renamed_list)
+    else:
+        print("No configs met the criteria for the special combined subscription.")
+    
+    # X-ray testing stage has been removed.
+
+    print("\n--- SCRIPT FINISHED SUCCESSFULLY ---")
+
+if __name__ == "__main__":
+    try: main()
+    except Exception: print(f"\n--- FATAL UNHANDLED ERROR IN MAIN ---"); traceback.print_exc(); exit(1)
