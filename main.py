@@ -8,28 +8,104 @@ API_HASH = os.environ.get('API_HASH')
 SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 SESSION_NAME = 'my_telegram_session'
 
-TARGET_GROUPS = [ 'letendorproxy' ] # Add your public group/channel usernames here
+# Replace with the usernames of the public groups/channels
+TARGET_GROUPS = [ 'letendorproxy' ]
 OUTPUT_FILE = 'mobo_net_subs.txt'
 NEW_NAME = '@MoboNetPC'
 # --- END OF CONFIGURATION ---
 
-def find_configs(text):
-    if not text: return []
-    return re.findall(r'(vless|vmess|trojan|ss)://[^\s<>"\'`]+', text)
+def find_and_reassemble_configs(text):
+    """
+    Finds V2Ray links. Crucially, it handles links that are split across
+    multiple lines by Telegram.
+    """
+    # This pattern is designed to find the start of a config and grab everything
+    # until the next likely config starts, or until whitespace. It's more greedy.
+    pattern = r'\b(vless|vmess|trojan|ss)://[^\s<>"\'`]+'
+    
+    # First, find all potential matches
+    potential_configs = re.findall(pattern, text)
+    
+    # Now, validate and clean them. This is important to filter out broken/truncated links.
+    valid_configs = []
+    for config in potential_configs:
+        # A simple but effective validation: A real config is usually long.
+        # This helps filter out truncated links like "vless://..."
+        if len(config) > 100:
+            # Some configs might have unwanted characters at the end, clean them up.
+            config = config.strip('.,;!?')
+            valid_configs.append(config)
+            
+    return valid_configs
 
 def rename_config(link, name):
     return f"{link.split('#')[0]}#{quote(name)}"
 
+async def process_message(message, found_configs):
+    """
+    A dedicated function to process a single message, including its text,
+    replies, forwards, and any attached text files.
+    """
+    if not message:
+        return 0
+
+    new_configs_found = 0
+    texts_to_scan = []
+
+    # 1. Add the main message text
+    if message.text:
+        texts_to_scan.append(message.text)
+        
+    # 2. Add text from a replied-to message
+    if message.reply_to and message.reply_to.message:
+        replied_message = await message.get_reply_message()
+        if replied_message and replied_message.text:
+            texts_to_scan.append(replied_message.text)
+
+    # 3. Add text from a forwarded message
+    if message.forward and message.forward.original_fwd.message:
+        # This part is a bit complex, we just grab text if available
+        fwd_message = await message.get_forward()
+        if fwd_message and fwd_message.text:
+            texts_to_scan.append(fwd_message.text)
+
+    # 4. Scan all collected texts
+    full_text_to_scan = "\n".join(texts_to_scan)
+    configs = find_and_reassemble_configs(full_text_to_scan)
+    
+    for config in configs:
+        renamed = rename_config(config, NEW_NAME)
+        if renamed not in found_configs:
+            found_configs.add(renamed)
+            new_configs_found += 1
+            
+    # 5. Check for and download text files
+    if message.document and message.document.mime_type == 'text/plain':
+        print(f"  -> Found a text file: {message.document.attributes[0].file_name}, downloading...")
+        try:
+            # Download the file to memory
+            file_content_bytes = await message.download_media(bytes)
+            file_content = file_content_bytes.decode('utf-8')
+            
+            configs_in_file = find_and_reassemble_configs(file_content)
+            for config in configs_in_file:
+                renamed = rename_config(config, NEW_NAME)
+                if renamed not in found_configs:
+                    found_configs.add(renamed)
+                    new_configs_found += 1
+        except Exception as e:
+            print(f"  -> Could not process file: {e}")
+
+    return new_configs_found
+
+
 async def main():
-    print("--- Telegram Scraper (User Account Mode on GitHub) ---")
+    print("--- Telegram Scraper v2 (Robust Mode) ---")
     if not all([API_ID, API_HASH, SESSION_STRING]):
-        print("FATAL: Required secrets not set.")
-        return
+        print("FATAL: Required secrets not set."); return
 
     try:
-        with open(f"{SESSION_NAME}.session", 'wb') as f:
-            f.write(base64.b64decode(SESSION_STRING))
-        print("Session file created from secret.")
+        with open(f"{SESSION_NAME}.session", 'wb') as f: f.write(base64.b64decode(SESSION_STRING))
     except Exception as e:
         print(f"FATAL: Could not write session file. Error: {e}"); return
 
@@ -46,28 +122,27 @@ async def main():
     try:
         await client.connect()
         if not await client.is_user_authorized():
-            print("FATAL: Session is not authorized. Please generate a new session file."); return
+            print("FATAL: Session is not authorized."); return
         print("Successfully connected to Telegram.")
         
         for group in TARGET_GROUPS:
-            print(f"\n--- Scraping group: {group} ---")
-            new = 0
-            async for msg in client.iter_messages(group, limit=200):
-                if msg and msg.text:
-                    for cfg in find_configs(msg.text):
-                        renamed = rename_config(cfg, NEW_NAME)
-                        if renamed not in configs:
-                            configs.add(renamed)
-                            new += 1
-            print(f"Found {new} new configs.")
+            print(f"\n--- Scraping group: {group} (Limit: 300 messages) ---")
+            total_new_in_group = 0
+            
+            # Use iter_messages to get the last 300 messages
+            async for message in client.iter_messages(group, limit=300):
+                new_found = await process_message(message, configs)
+                total_new_in_group += new_found
+            
+            print(f"Found {total_new_in_group} new configs in this group.")
+            
     finally:
         await client.disconnect()
         print("\nDisconnected from Telegram.")
     
     if configs:
         content = base64.b64encode("\n".join(sorted(list(configs))).encode('utf-8')).decode('utf-8')
-        with open(OUTPUT_FILE, 'w') as f:
-            f.write(content)
+        with open(OUTPUT_FILE, 'w') as f: f.write(content)
         print(f"Successfully saved {len(configs)} total configs to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
