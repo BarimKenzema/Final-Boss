@@ -2,6 +2,7 @@ name: Scrape Telegram for V2Ray Configs
 
 on:
   schedule:
+    # The schedule is still here for automatic runs later
     - cron: '0 * * * *'
   workflow_dispatch:
 
@@ -15,8 +16,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Wait for a random time (0 to 15 minutes)
-        run: sleep $((RANDOM % 900))
+      # --- THE RANDOM WAIT STEP HAS BEEN REMOVED ---
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -24,8 +24,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Dependencies
-        # Added geoip2-database for country lookup
-        run: pip install telethon geoip2-database
+        run: pip install telethon geoip2
 
       - name: Run Python Scraper
         env:
@@ -38,5 +37,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "✅ Automated Telegram Config & Category Update"
-          # This simple pattern will commit any and all changes in the repo
           file_pattern: .
