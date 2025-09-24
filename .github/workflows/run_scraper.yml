@@ -2,7 +2,7 @@ name: Scrape Telegram for V2Ray Configs
 
 on:
   schedule:
-    # Runs every hour, on the hour.
+    # The schedule is still here for automatic runs later
     - cron: '0 * * * *'
   workflow_dispatch:
 
@@ -16,8 +16,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Wait for a random time (0 to 15 minutes)
-        run: sleep $((RANDOM % 900))
+      # The random wait step is removed for testing
+      # - name: Wait for a random time (0 to 15 minutes)
+      #   run: sleep $((RANDOM % 900))
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -25,7 +26,8 @@ jobs:
           python-version: '3.11'
 
       - name: Install Dependencies
-        # Installs all required packages for the v6 script
+        # --- THIS IS THE CORRECTED LINE ---
+        # Added the missing 'dnspython' package
         run: pip install telethon geoip2 dnspython
 
       - name: Run Python Scraper
@@ -39,5 +41,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "✅ Automated Telegram Config & Category Update"
-          # This pattern commits all changed files, including the state file and categories
           file_pattern: .
