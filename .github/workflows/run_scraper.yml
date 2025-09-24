@@ -23,8 +23,9 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Telethon
-        run: pip install telethon
+      - name: Install Dependencies
+        # Added geoip2-database for country lookup
+        run: pip install telethon geoip2-database
 
       - name: Run Python Scraper
         env:
@@ -36,6 +37,6 @@ jobs:
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "✅ Automated Telegram Config Update"
-          # --- THIS IS THE CHANGED LINE ---
-          file_pattern: mobo_net_subs.txt last_ids.json
+          commit_message: "✅ Automated Telegram Config & Category Update"
+          # This simple pattern will commit any and all changes in the repo
+          file_pattern: .
