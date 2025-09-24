@@ -8,7 +8,7 @@ API_HASH = os.environ.get('API_HASH')
 SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 SESSION_NAME = 'my_telegram_session'
 
-TARGET_GROUPS = [ 'letendorproxy', 'MuteVpnN' ]
+TARGET_GROUPS = [ 'letendorproxy', 'MuteVpnN', 'ShadowProxy66' ]
 OUTPUT_FILE = 'mobo_net_subs.txt'
 NEW_NAME = '@MoboNetPC'
 
