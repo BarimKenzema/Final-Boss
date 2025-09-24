@@ -16,23 +16,31 @@ NEW_NAME = '@MoboNetPC'
 
 def find_and_reassemble_configs(text):
     """
-    Finds V2Ray links. Correctly handles the regex to return the full match.
+    Finds V2Ray links with an intelligent filter that understands different
+    protocols have different typical lengths.
     """
     if not text:
         return []
     
-    # --- THIS IS THE CORRECTED REGEX ---
-    # The (?:...) creates a non-capturing group, so findall returns the whole string.
     pattern = r'\b(?:vless|vmess|trojan|ss)://[^\s<>"\'`]+'
-    # --- END OF CORRECTION ---
-
     potential_configs = re.findall(pattern, text)
     
     valid_configs = []
     for config in potential_configs:
-        # We still keep the length check to filter out obviously truncated links.
-        if len(config) > 100:
-            config = config.strip('.,;!?')
+        config = config.strip('.,;!?') # Clean the link first
+        
+        # --- THIS IS THE NEW, INTELLIGENT FILTER ---
+        is_valid = False
+        if config.startswith('ss://'):
+            # Shadowsocks configs can be shorter
+            if len(config) > 60:
+                is_valid = True
+        elif config.startswith(('vless://', 'vmess://', 'trojan://')):
+            # These are typically much longer
+            if len(config) > 100:
+                is_valid = True
+        
+        if is_valid:
             valid_configs.append(config)
             
     return valid_configs
@@ -59,7 +67,7 @@ async def process_message(message, found_configs):
             if replied_message and replied_message.text:
                 texts_to_scan.append(replied_message.text)
         except Exception:
-            pass # Fail silently if replied message is deleted
+            pass
 
     full_text_to_scan = "\n".join(texts_to_scan)
     configs = find_and_reassemble_configs(full_text_to_scan)
@@ -89,7 +97,7 @@ async def process_message(message, found_configs):
 
 
 async def main():
-    print("--- Telegram Scraper v2.3 (Regex Corrected) ---")
+    print("--- Telegram Scraper v2.4 (Intelligent Filter) ---")
     if not all([API_ID, API_HASH, SESSION_STRING]):
         print("FATAL: Required secrets not set."); return
 
@@ -136,4 +144,4 @@ async def main():
         print(f"Successfully saved {len(configs)} total configs to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main()) 
