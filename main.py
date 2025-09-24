@@ -19,17 +19,13 @@ def find_and_reassemble_configs(text):
     Finds V2Ray links. Crucially, it handles links that are split across
     multiple lines by Telegram.
     """
-    # This pattern is designed to find the start of a config and grab everything
-    # until the next likely config starts, or until whitespace. It's more greedy.
+    if not text:
+        return []
     pattern = r'\b(vless|vmess|trojan|ss)://[^\s<>"\'`]+'
-    
-    # First, find all potential matches
     potential_configs = re.findall(pattern, text)
     
-    # Now, validate and clean them.
     valid_configs = []
     for config in potential_configs:
-        # A simple but effective validation: A real config is usually long.
         if len(config) > 100:
             config = config.strip('.,;!?')
             valid_configs.append(config)
@@ -50,34 +46,17 @@ async def process_message(message, found_configs):
     new_configs_found = 0
     texts_to_scan = []
 
-    # 1. Add the main message text
     if message.text:
         texts_to_scan.append(message.text)
         
-    # 2. --- THIS IS THE CORRECTED PART ---
-    # Check if this message is a reply to another message
     if message.is_reply:
         try:
-            # Fetch the message that was replied to
             replied_message = await message.get_reply_message()
             if replied_message and replied_message.text:
                 texts_to_scan.append(replied_message.text)
-        except Exception as e:
-            # Sometimes the replied-to message is deleted or inaccessible
-            print(f"  -> Note: Could not fetch a replied-to message: {e}")
-    # --- END OF CORRECTION ---
-
-    # 3. Add text from a forwarded message (with safety checks)
-    if message.forward:
-        try:
-            # We don't need the original message, just the text if it's forwarded with the message itself
-            if message.forward.chat and hasattr(message.forward.chat, 'text') and message.forward.chat.text:
-                 texts_to_scan.append(message.forward.chat.text)
         except Exception:
-            # This part can be complex, so we fail silently if it's an unusual forward
             pass
 
-    # 4. Scan all collected texts
     full_text_to_scan = "\n".join(texts_to_scan)
     configs = find_and_reassemble_configs(full_text_to_scan)
     
@@ -87,14 +66,11 @@ async def process_message(message, found_configs):
             found_configs.add(renamed)
             new_configs_found += 1
             
-    # 5. Check for and download text files
     if message.document and hasattr(message.document, 'mime_type') and message.document.mime_type == 'text/plain':
-        # Check file size to avoid downloading huge files (e.g., > 1MB)
-        if message.document.size < 1024 * 1024:
-            print(f"  -> Found a text file, downloading...")
+        if message.document.size < 1024 * 1024: # 1MB limit
             try:
                 file_content_bytes = await message.download_media(bytes)
-                file_content = file_content_bytes.decode('utf-8', errors='ignore') # Ignore decoding errors
+                file_content = file_content_bytes.decode('utf-8', errors='ignore')
                 
                 configs_in_file = find_and_reassemble_configs(file_content)
                 for config in configs_in_file:
@@ -109,7 +85,7 @@ async def process_message(message, found_configs):
 
 
 async def main():
-    print("--- Telegram Scraper v2.1 (Robust & Corrected) ---")
+    print("--- Telegram Scraper v2.2 (Robust & Corrected) ---")
     if not all([API_ID, API_HASH, SESSION_STRING]):
         print("FATAL: Required secrets not set."); return
 
@@ -140,4 +116,21 @@ async def main():
             print(f"\n--- Scraping group: {group} (Limit: 300 messages) ---")
             total_new_in_group = 0
             
-            async  
+            # --- THIS IS THE LINE I HAVE CORRECTED ---
+            async for message in client.iter_messages(group, limit=300):
+                new_found = await process_message(message, configs)
+                total_new_in_group += new_found
+            
+            print(f"Found {total_new_in_group} new configs in this group.")
+            
+    finally:
+        await client.disconnect()
+        print("\nDisconnected from Telegram.")
+    
+    if configs:
+        content = base64.b64encode("\n".join(sorted(list(configs))).encode('utf-8')).decode('utf-8')
+        with open(OUTPUT_FILE, 'w') as f: f.write(content)
+        print(f"Successfully saved {len(configs)} total configs to {OUTPUT_FILE}")
+
+if __name__ == "__main__":
+    asyncio.run(main()) 
