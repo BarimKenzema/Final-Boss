@@ -16,8 +16,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Wait for a random time (0 to 15 minutes)
-        run: sleep $((RANDOM % 900))
+      - name: Wait randomly on scheduled runs (3 to 6 minutes)
+        # This step ONLY runs for scheduled jobs, NOT manual ones.
+        if: github.event_name == 'schedule'
+        run: sleep $((180 + RANDOM % 180))
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -25,7 +27,6 @@ jobs:
           python-version: '3.11'
 
       - name: Install Dependencies
-        # Installs all required packages for the v6 script
         run: pip install telethon geoip2 dnspython
 
       - name: Run Python Scraper
@@ -39,5 +40,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "✅ Automated Telegram Config & Category Update"
-          # This pattern commits all changed files, including the state file and categories
           file_pattern: .
