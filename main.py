@@ -18,7 +18,7 @@ TARGET_GROUPS = [
     'vpnplusee_free', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'vmess_ir',
     'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 'v2rayroz',
     'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast',
-    'v2ray_official', 'v2pedia', 'sadoshocks', 'toxicvid', 'tehranargo', 'spikevpn',
+    'v2ray_official', 'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn',
     'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net'
 ]
 OUTPUT_FILE_MAIN = 'mobo_net_subs.txt'
