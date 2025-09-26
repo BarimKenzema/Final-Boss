@@ -203,7 +203,7 @@ async def main():
             group_str = str(group)
             min_id = last_ids.get(group_str, 0)
             is_new_group = min_id == 0
-            limit = 44 if is_new_group else None
+            limit = 22 if is_new_group else None
             scan_type = f"last {limit}" if is_new_group else f"since ID > {min_id}"
             print(f"\n--- Scraping group: {group_str} ({scan_type}) ---")
             messages = [msg async for msg in client.iter_messages(group, min_id=min_id, limit=limit)]
