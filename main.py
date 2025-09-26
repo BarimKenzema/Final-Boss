@@ -24,7 +24,7 @@ TARGET_GROUPS = [
 OUTPUT_FILE_MAIN = 'mobo_net_subs.txt'
 STATE_FILE = 'last_ids.json'
 NEW_NAME = '@MoboNetPC'
-MAX_CONFIGS_PER_FILE = 444
+MAX_CONFIGS_PER_FILE = 44
 GEOIP_DB_PATH = 'GeoLite2-Country.mmdb'
 
 COUNTRY_FLAGS = {
