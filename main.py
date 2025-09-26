@@ -11,7 +11,6 @@ API_HASH = os.environ.get('API_HASH')
 SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 SESSION_NAME = 'my_telegram_session'
 
-# Updated with all your provided groups and channels
 TARGET_GROUPS = [
     'letendorproxy', 'MuteVpnN', 'ShadowProxy66', 'free_vpn02', 'falcunargo',
     'DirectVPN', 'DailyV2RY', 'daily_configs', 'configpluse', 'ghalagyann',
@@ -28,7 +27,6 @@ NEW_NAME = '@MoboNetPC'
 MAX_CONFIGS_PER_FILE = 444
 GEOIP_DB_PATH = 'GeoLite2-Country.mmdb'
 
-# --- NEW: Dictionary for Country Code to Flag Emoji ---
 COUNTRY_FLAGS = {
     "AD": "🇦🇩", "AE": "🇦🇪", "AF": "🇦🇫", "AG": "🇦🇬", "AI": "🇦🇮", "AL": "🇦🇱", "AM": "🇦🇲",
     "AO": "🇦🇴", "AQ": "🇦🇶", "AR": "🇦🇷", "AS": "🇦🇸", "AT": "🇦🇹", "AU": "🇦🇺", "AW": "🇦🇼",
@@ -66,10 +64,14 @@ COUNTRY_FLAGS = {
     "VN": "🇻🇳", "VU": "🇻🇺", "WF": "🇼🇫", "WS": "🇼🇸", "YE": "🇾🇪", "YT": "🇾🇹", "ZA": "🇿🇦",
     "ZM": "🇿🇲", "ZW": "🇿🇼", "XX": "🌐"
 }
+# --- END OF CONFIGURATION ---
 
-# --- Caching & Helpers (No changes to core logic) ---
+# --- Caching & Helpers ---
 dns_cache = {}
 geoip_reader = None
+
+def country_code_to_flag(iso_code):
+    return COUNTRY_FLAGS.get(iso_code, "🌐")
 
 def get_country_from_hostname(hostname):
     if not hostname: return "XX"
@@ -112,14 +114,11 @@ def find_and_validate_configs(text):
     return valid_configs
 
 def rename_config(link, name, country_code):
-    """NEW: Now takes a country code to add the flag."""
-    flag = COUNTRY_FLAGS.get(country_code, "🌐")
+    flag = country_code_to_flag(country_code)
     new_name_with_flags = f"{flag} {name} {flag}"
     return f"{link.split('#')[0]}#{quote(new_name_with_flags)}"
 
-async def process_message(message, newly_found_configs_set):
-    """Processes a message and adds new configs to a temporary set for this run."""
-    if not message: return
+async def process_message(message, newly_found_configs_map, all_known_configs_set):
     texts_to_scan = []
     if message.text: texts_to_scan.append(message.text)
     if message.is_reply:
@@ -130,7 +129,11 @@ async def process_message(message, newly_found_configs_set):
     
     full_text = "\n".join(texts_to_scan)
     for config in find_and_validate_configs(full_text):
-        newly_found_configs_set.add(config)
+        base_config = config.split('#')[0]
+        if base_config not in all_known_configs_set:
+            all_known_configs_set.add(base_config)
+            attrs = get_config_attributes(config)
+            if attrs: newly_found_configs_map[base_config] = attrs
             
     if message.document and hasattr(message.document, 'mime_type') and message.document.mime_type == 'text/plain':
         if message.document.size < 1024 * 1024:
@@ -138,7 +141,11 @@ async def process_message(message, newly_found_configs_set):
                 content_bytes = await message.download_media(bytes)
                 file_content = content_bytes.decode('utf-8', errors='ignore')
                 for config in find_and_validate_configs(file_content):
-                    newly_found_configs_set.add(config)
+                    base_config = config.split('#')[0]
+                    if base_config not in all_known_configs_set:
+                        all_known_configs_set.add(base_config)
+                        attrs = get_config_attributes(config)
+                        if attrs: newly_found_configs_map[base_config] = attrs
             except Exception as e: print(f"  -> Could not process file: {e}")
 
 def load_list_from_file(filepath):
@@ -151,7 +158,7 @@ def load_list_from_file(filepath):
     return []
 
 async def main():
-    print(f"--- Telegram Scraper v7.0 (Intelligent Sync) ---")
+    print(f"--- Telegram Scraper v7.1 (Special Category) ---")
     global geoip_reader
     if not all([API_ID, API_HASH, SESSION_STRING]): print("FATAL: Required secrets not set."); return
 
@@ -167,12 +174,25 @@ async def main():
         with open(f"{SESSION_NAME}.session", 'wb') as f: f.write(base64.b64decode(SESSION_STRING))
     except Exception as e: print(f"FATAL: Could not write session file. {e}"); return
     
+    # --- Load all lists and build a comprehensive set of known configs ---
+    all_lists = {}
+    all_paths = [OUTPUT_FILE_MAIN]
+    for cat_dir in ['protocols', 'networks', 'security', 'countries', 'special']:
+        if os.path.exists(cat_dir):
+            all_paths.extend([os.path.join(cat_dir, f) for f in os.listdir(cat_dir) if f.endswith('.txt')])
+    for path in all_paths:
+        all_lists[path] = load_list_from_file(path)
+    all_known_configs_set = set(c.split('#')[0] for lst in all_lists.values() for c in lst)
+    print(f"Loaded {len(all_lists)} existing files containing {len(all_known_configs_set)} unique base configs.")
+
     last_ids = {}
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, 'r') as f: last_ids = json.load(f)
+        try:
+            with open(STATE_FILE, 'r') as f: last_ids = json.load(f)
+        except Exception: pass
         
     client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
-    newly_scraped_configs = set()
+    newly_found_configs_map = {}
     new_latest_ids = last_ids.copy()
     try:
         await client.connect()
@@ -182,77 +202,62 @@ async def main():
         for group in TARGET_GROUPS:
             group_str = str(group)
             min_id = last_ids.get(group_str, 0)
-            
-            # --- NEW: Logic for initial scan ---
             is_new_group = min_id == 0
             limit = 44 if is_new_group else None
             scan_type = f"last {limit}" if is_new_group else f"since ID > {min_id}"
             print(f"\n--- Scraping group: {group_str} ({scan_type}) ---")
-            
-            messages_in_group = [msg async for msg in client.iter_messages(group, min_id=min_id, limit=limit)]
-            
-            if messages_in_group:
-                new_latest_ids[group_str] = messages_in_group[0].id
-                print(f"Found {len(messages_in_group)} message(s). New latest ID: {messages_in_group[0].id}")
-                for message in messages_in_group:
-                    await process_message(message, newly_scraped_configs)
+            messages = [msg async for msg in client.iter_messages(group, min_id=min_id, limit=limit)]
+            if messages:
+                new_latest_ids[group_str] = messages[0].id
+                print(f"Found {len(messages)} new message(s). New latest ID: {messages[0].id}")
+                for message in messages:
+                    await process_message(message, newly_found_configs_map, all_known_configs_set)
             else:
                 print("No new messages found.")
     finally:
         await client.disconnect()
         print("Disconnected from Telegram.")
-    
-    # --- Process and save all lists ---
-    if newly_scraped_configs:
-        print(f"\nFound {len(newly_scraped_configs)} new raw configs. Processing and renaming...")
-        # Create a dictionary of all lists to manage
-        all_lists = {}
-        
-        # Load all existing lists from disk
-        all_paths = [OUTPUT_FILE_MAIN]
-        for cat in ['protocols', 'networks', 'security', 'countries']:
-            if os.path.exists(cat):
-                all_paths.extend([os.path.join(cat, f) for f in os.listdir(cat) if f.endswith('.txt')])
-        for path in all_paths:
-            all_lists[path] = load_list_from_file(path)
-        
-        # Add new configs to the appropriate lists
-        for config in newly_scraped_configs:
-            attrs = get_config_attributes(config)
-            if not attrs: continue
+
+    print(f"\nFound {len(newly_found_configs_map)} new unique configs in this run.")
+
+    if newly_found_configs_map:
+        for base_config, attrs in newly_found_configs_map.items():
+            renamed_config = rename_config(base_config, NEW_NAME, attrs['country'])
             
-            renamed_config = rename_config(config, NEW_NAME, attrs['country'])
+            # Add to main list
+            if OUTPUT_FILE_MAIN not in all_lists: all_lists[OUTPUT_FILE_MAIN] = []
+            all_lists[OUTPUT_FILE_MAIN].append(renamed_config)
             
-            # Define paths for this config
+            # Add to standard category lists
             paths = [
-                OUTPUT_FILE_MAIN,
-                f"protocols/{attrs['protocol']}.txt",
-                f"networks/{attrs['network']}.txt",
-                f"security/{attrs['security']}.txt",
-                f"countries/{attrs['country'].lower()}.txt"
+                f"protocols/{attrs['protocol']}.txt", f"networks/{attrs['network']}.txt",
+                f"security/{attrs['security']}.txt", f"countries/{attrs['country'].lower()}.txt"
             ]
             for path in paths:
                 if path not in all_lists: all_lists[path] = []
-                # Add only if it's truly unique to this specific list
-                if renamed_config not in set(all_lists[path]):
-                    all_lists[path].append(renamed_config)
+                all_lists[path].append(renamed_config)
+            
+            # --- NEW: Special Category Logic ---
+            if attrs['security'] == 'reality' and attrs['network'] == 'grpc':
+                special_path = 'special/reality_grpc.txt'
+                if special_path not in all_lists: all_lists[special_path] = []
+                all_lists[special_path].append(renamed_config)
+                print(f"  -> Added a config to the special 'reality_grpc' category!")
+    
+    print("\n--- Pruning and saving all subscription files ---")
+    for filepath, config_list in all_lists.items():
+        if len(config_list) > MAX_CONFIGS_PER_FILE:
+            num_to_remove = len(config_list) - MAX_CONFIGS_PER_FILE
+            config_list = config_list[num_to_remove:]
+            print(f"Pruned {filepath}: removed {num_to_remove} old configs.")
         
-        # Prune and save all lists
-        print("\n--- Pruning and saving all subscription files ---")
-        for filepath, config_list in all_lists.items():
-            if len(config_list) > MAX_CONFIGS_PER_FILE:
-                num_to_remove = len(config_list) - MAX_CONFIGS_PER_FILE
-                config_list = config_list[num_to_remove:]
-                print(f"Pruned {filepath}: removed {num_to_remove} old configs.")
-            
-            dir_name = os.path.dirname(filepath)
-            if dir_name: os.makedirs(dir_name, exist_ok=True)
-            content = base64.b64encode("\n".join(config_list).encode('utf-8')).decode('utf-8')
-            with open(filepath, 'w') as f: f.write(content)
-            
-        print(f"\nSuccessfully saved/updated {len(all_lists)} subscription files.")
-
-    # Save the new state
+        dir_name = os.path.dirname(filepath)
+        if dir_name: os.makedirs(dir_name, exist_ok=True)
+        content = base64.b64encode("\n".join(config_list).encode('utf-8')).decode('utf-8')
+        with open(filepath, 'w') as f: f.write(content)
+        
+    print(f"\nSuccessfully saved/updated {len(all_lists)} subscription files.")
+    
     if new_latest_ids:
         with open(STATE_FILE, 'w') as f: json.dump(new_latest_ids, f, indent=2)
         print(f"Successfully updated bookmarks in {STATE_FILE}.")
