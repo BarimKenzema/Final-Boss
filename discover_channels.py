@@ -4,24 +4,15 @@ import time
 import random
 import os
 import base64
-import requests
 from datetime import datetime, timezone, timedelta
 from telethon.sync import TelegramClient
+from duckduckgo_search import DDGS # The new, powerful search library
 
 # --- CONFIGURATION ---
 API_ID = os.environ.get('API_ID')
 API_HASH = os.environ.get('API_HASH')
 SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 SESSION_NAME = 'my_telegram_session'
-
-# --- NEW: Using SearXNG Public Instances for stable API access ---
-SEARXNG_INSTANCES = [
-    "https://searx.be",
-    "https://searx.work",
-    "https://searx.info",
-    "https://searx.tiekoetter.com",
-    "https://searx.bacardi.cat"
-]
 
 SEARCH_QUERIES = [
     'site:t.me "v2ray" "config"', 'site:t.me "vless" "бесплатно"',
@@ -32,7 +23,7 @@ SEARCH_QUERIES = [
 
 OUTPUT_FILE = 'found_channels.txt'
 RUN_DURATION_MINUTES = 4
-SEARCH_DELAYS_SECONDS = [5, 7, 10]
+SEARCH_DELAYS_SECONDS = [10, 15, 20] # Be respectful to the DDG API
 
 # --- Quality Analysis Configuration (Unchanged) ---
 ANALYSIS_MESSAGE_LIMIT = 30
@@ -43,39 +34,30 @@ CHANNEL_LINK_REGEX = re.compile(r't\.me/([a-zA-Z0-9_]{5,})')
 # --- END OF CONFIGURATION ---
 
 
-async def search_searxng_for_telegram_links(query, instances):
-    """Searches a SearXNG instance using its JSON API."""
-    print(f"  -> Searching SearXNG for: '{query}'")
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-    
-    # Try each instance until one works
-    for instance in instances:
-        try:
-            url = f"{instance}/?q={requests.utils.quote(query)}&format=json"
-            response = requests.get(url, headers=headers, timeout=20)
-            response.raise_for_status()
-            data = response.json()
-            
-            found_channels = set()
-            for result in data.get('results', []):
-                url = result.get('url')
+def search_ddg_for_telegram_links(query):
+    """Searches DuckDuckGo using the dedicated library and extracts t.me links."""
+    print(f"  -> Searching DDG for: '{query}'")
+    try:
+        found_channels = set()
+        # The DDGS().text() function returns a generator of search results
+        with DDGS() as ddgs:
+            for result in ddgs.text(query, max_results=25):
+                # The result dictionary contains a 'href' key with the URL
+                url = result.get('href')
                 if url:
                     match = CHANNEL_LINK_REGEX.search(url)
                     if match:
                         found_channels.add(match.group(1).lower())
-            
-            print(f"  -> Found {len(found_channels)} potential channels via {instance}.")
-            return list(found_channels) # Return on first success
-        except Exception as e:
-            print(f"  -> Instance {instance} failed: {e}. Trying next...")
-            continue
-    
-    print(f"  -> All SearXNG instances failed for this query.")
-    return []
+        
+        print(f"  -> Found {len(found_channels)} potential channel links from DDG library.")
+        return list(found_channels)
+    except Exception as e:
+        print(f"  -> ERROR during DDG search: {e}")
+        return []
 
 
 async def main():
-    print("--- Telegram Channel Discoverer v5.0 (SearXNG API) ---")
+    print("--- Telegram Channel Discoverer v6.0 (duckduckgo-search Library) ---")
     if not all([API_ID, API_HASH, SESSION_STRING]): print("FATAL: Required secrets not set."); return
 
     try:
@@ -93,28 +75,29 @@ async def main():
     start_time = time.time()
     run_duration_seconds = RUN_DURATION_MINUTES * 60
     
-    # --- Step 1: Seed the queue from SearXNG ---
-    print("\n--- Seeding initial channels from SearXNG API searches ---")
+    # --- Step 1: Seed the queue from DuckDuckGo Library ---
+    print("\n--- Seeding initial channels using duckduckgo-search library ---")
     random.shuffle(SEARCH_QUERIES)
-    shuffled_instances = random.sample(SEARXNG_INSTANCES, len(SEARXNG_INSTANCES))
     for query in SEARCH_QUERIES:
         if time.time() - start_time > run_duration_seconds: break
         
-        search_results = await search_searxng_for_telegram_links(query, shuffled_instances)
-        for username in search_results:
+        # The library is synchronous, so we don't need 'await'
+        ddg_results = search_ddg_for_telegram_links(query)
+        for username in ddg_results:
             if username not in already_processed:
                 channels_to_scan_queue.add(username)
         
+        # We still sleep asynchronously to pause the whole script
         await asyncio.sleep(random.choice(SEARCH_DELAYS_SECONDS))
     
     if not channels_to_scan_queue:
-        print("\nSearXNG search did not yield any new channels to analyze. Exiting.")
+        print("\nDuckDuckGo search did not yield any new channels to analyze. Exiting.")
         return
         
     scan_list = list(channels_to_scan_queue)
-    print(f"\n--- Found {len(scan_list)} unique seed channels from SearXNG. Starting analysis... ---")
+    print(f"\n--- Found {len(scan_list)} unique seed channels. Starting analysis... ---")
     
-    # --- Step 2: Analyze the channels ---
+    # --- Step 2: Analyze the channels (Unchanged) ---
     client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
     try:
         await client.connect()
@@ -153,7 +136,7 @@ async def main():
         await client.disconnect()
         print("\nDisconnected from Telegram.")
 
-    # --- Step 3: Save results ---
+    # --- Step 3: Save results (Unchanged) ---
     if newly_discovered_channels:
         print(f"\n--- Discovery Complete ---")
         unique_new = sorted(list(set(newly_discovered_channels)))
