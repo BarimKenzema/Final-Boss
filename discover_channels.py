@@ -15,9 +15,8 @@ API_HASH = os.environ.get('API_HASH')
 SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 SESSION_NAME = 'my_telegram_session'
 
-# --- NEW: Google Search Queries ---
-# This is now the engine of our discovery.
-GOOGLE_SEARCH_QUERIES = [
+# These queries are now for DuckDuckGo
+SEARCH_QUERIES = [
     'site:t.me "v2ray" "config" "nodes"',
     'site:t.me "vless" "бесплатно"',
     'site:t.me "vmess" "免费节点"',
@@ -30,7 +29,7 @@ GOOGLE_SEARCH_QUERIES = [
 
 OUTPUT_FILE = 'found_channels.txt'
 RUN_DURATION_MINUTES = 4
-SEARCH_DELAYS_SECONDS = [10, 15, 20] # Longer delays for external requests
+SEARCH_DELAYS_SECONDS = [5, 8, 10]
 
 # --- Quality Analysis Configuration (Unchanged) ---
 ANALYSIS_MESSAGE_LIMIT = 30
@@ -41,49 +40,46 @@ CHANNEL_LINK_REGEX = re.compile(r't\.me/([a-zA-Z0-9_]{5,})')
 # --- END OF CONFIGURATION ---
 
 
-async def search_google_for_telegram_links(query):
-    """Searches Google and extracts t.me links from the results."""
-    print(f"  -> Searching Google for: '{query}'")
+async def search_duckduckgo_for_telegram_links(query):
+    """Searches DuckDuckGo's simple HTML site and extracts t.me links."""
+    print(f"  -> Searching DuckDuckGo for: '{query}'")
     try:
-        # Use a common user-agent to look like a real browser
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        # The search URL
-        url = f"https://www.google.com/search?q={requests.utils.quote(query)}"
+        # Use DuckDuckGo's non-JavaScript, simple HTML endpoint
+        url = f"https://html.duckduckgo.com/html/?q={requests.utils.quote(query)}"
         
         response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status() # Raise an exception for bad status codes
+        response.raise_for_status()
         
-        # Use BeautifulSoup to parse the HTML and find links
         soup = BeautifulSoup(response.text, 'html.parser')
-        links = soup.find_all('a')
+        # DDG's simple HTML results are in divs with class="result__body"
+        results = soup.find_all('div', class_='result__body')
         
         found_channels = set()
-        for link in links:
-            href = link.get('href')
-            if href:
-                # Find links that point to t.me
+        for result in results:
+            link = result.find('a', class_='result__a')
+            if link and link.get('href'):
+                href = link.get('href')
                 match = CHANNEL_LINK_REGEX.search(href)
                 if match:
                     found_channels.add(match.group(1).lower())
         
-        print(f"  -> Found {len(found_channels)} potential channel links from Google.")
+        print(f"  -> Found {len(found_channels)} potential channel links from DuckDuckGo.")
         return list(found_channels)
     except Exception as e:
-        print(f"  -> ERROR during Google search: {e}")
+        print(f"  -> ERROR during DuckDuckGo search: {e}")
         return []
 
 
 async def main():
-    print("--- Telegram Channel Discoverer v4.0 (Google Scraper) ---")
-    if not all([API_ID, API_HASH, SESSION_STRING]):
-        print("FATAL: Required secrets are not set."); return
+    print("--- Telegram Channel Discoverer v4.1 (DuckDuckGo Scraper) ---")
+    if not all([API_ID, API_HASH, SESSION_STRING]): print("FATAL: Required secrets not set."); return
 
     try:
         with open(f"{SESSION_NAME}.session", 'wb') as f: f.write(base64.b64decode(SESSION_STRING))
-    except Exception as e:
-        print(f"FATAL: Could not write session file. Error: {e}"); return
+    except Exception as e: print(f"FATAL: Could not write session file. Error: {e}"); return
 
     already_processed = set()
     if os.path.exists(OUTPUT_FILE):
@@ -96,27 +92,27 @@ async def main():
     start_time = time.time()
     run_duration_seconds = RUN_DURATION_MINUTES * 60
     
-    # --- Step 1: Seed the queue from Google ---
-    print("\n--- Seeding initial channels from Google searches ---")
-    random.shuffle(GOOGLE_SEARCH_QUERIES)
-    for query in GOOGLE_SEARCH_QUERIES:
+    # --- Step 1: Seed the queue from DuckDuckGo ---
+    print("\n--- Seeding initial channels from DuckDuckGo searches ---")
+    random.shuffle(SEARCH_QUERIES)
+    for query in SEARCH_QUERIES:
         if time.time() - start_time > run_duration_seconds: break
         
-        google_results = await search_google_for_telegram_links(query)
-        for username in google_results:
+        ddg_results = await search_duckduckgo_for_telegram_links(query)
+        for username in ddg_results:
             if username not in already_processed:
                 channels_to_scan_queue.add(username)
         
         await asyncio.sleep(random.choice(SEARCH_DELAYS_SECONDS))
     
     if not channels_to_scan_queue:
-        print("\nGoogle search did not yield any new channels to analyze. Exiting.")
+        print("\nDuckDuckGo search did not yield any new channels to analyze. Exiting.")
         return
         
     scan_list = list(channels_to_scan_queue)
-    print(f"\n--- Found {len(scan_list)} unique seed channels from Google. Starting analysis... ---")
+    print(f"\n--- Found {len(scan_list)} unique seed channels from DuckDuckGo. Starting analysis... ---")
     
-    # --- Step 2: Analyze the channels found via Google ---
+    # --- Step 2: Analyze the channels ---
     client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
     try:
         await client.connect()
@@ -149,7 +145,7 @@ async def main():
             except Exception as e:
                 print(f"  -> Could not analyze @{username_to_check}. Skipping. Error: {e}")
             
-            await asyncio.sleep(2) # Small delay between analyzing channels
+            await asyncio.sleep(2)
             
     finally:
         await client.disconnect()
