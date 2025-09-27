@@ -15,7 +15,7 @@ TARGET_GROUPS = [
     'letendorproxy', 'MuteVpnN', 'ShadowProxy66', 'free_vpn02', 'falcunargo',
     'DirectVPN', 'DailyV2RY', 'daily_configs', 'configpluse', 'ghalagyann',
     'ghalagyann2', 'Leecher56', 'tigervpnorg', 'v2rayng_fars', 'Mrsoulb',
-    'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'v2ray_official' 'horn_proxy', 'ocean_peace_mind', 'safavpnn', 'vless_config', 'vpn_tehran', 'vpnz4','customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'vmess_ir',
+    'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'v2ray_official', 'horn_proxy', 'ocean_peace_mind', 'safavpnn', 'vless_config', 'vpn_tehran', 'vpnz4', 'customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'vmess_ir',
     'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 'v2rayroz',
     'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast',
     'v2ray_official', 'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn',
@@ -62,7 +62,7 @@ COUNTRY_FLAGS = {
     "TT": "🇹🇹", "TV": "🇹🇻", "TW": "🇹🇼", "TZ": "🇹🇿", "UA": "🇺🇦", "UG": "🇺🇬", "US": "🇺🇸",
     "UY": "🇺🇾", "UZ": "🇺🇿", "VA": "🇻🇦", "VC": "🇻🇨", "VE": "🇻🇪", "VG": "🇻🇬", "VI": "🇻🇮",
     "VN": "🇻🇳", "VU": "🇻🇺", "WF": "🇼🇫", "WS": "🇼🇸", "YE": "🇾🇪", "YT": "🇾🇹", "ZA": "🇿🇦",
-    "ZM": "🇿🇲", "ZW": "🇿🇼", "XX": "🌐"
+    "ZM": "🇿🇲", "ZW": "🇿🇼", "XX": "🔓"
 }
 # --- END OF CONFIGURATION ---
 
@@ -203,7 +203,7 @@ async def main():
             group_str = str(group)
             min_id = last_ids.get(group_str, 0)
             is_new_group = min_id == 0
-            limit = 44 if is_new_group else None
+            limit = 4 if is_new_group else None
             scan_type = f"last {limit}" if is_new_group else f"since ID > {min_id}"
             print(f"\n--- Scraping group: {group_str} ({scan_type}) ---")
             messages = [msg async for msg in client.iter_messages(group, min_id=min_id, limit=limit)]
