@@ -15,8 +15,8 @@ SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 SESSION_NAME = 'my_telegram_session'
 
 SEED_CHANNELS = [
-    'letendorproxy', 'MuteVpnN', 'ShadowProxy66',
-    'v2rayng_news', 'PrivateConfig', 'v2ray_official'
+    'SaFaVPNN', 'ocean_peace_mind', 'ShahinCrafto',
+    'Horn_Proxy', 'Pro_v2rayShop', 'V2ConfigGB', 'GetConfigIR', 'vless_config'
 ]
 OUTPUT_FILE = 'found_channels.txt'
 RUN_DURATION_MINUTES = 5 
