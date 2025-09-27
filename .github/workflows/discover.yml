@@ -23,10 +23,9 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Dependencies
-        # --- THIS IS THE UPDATED LINE ---
-        # Added the new duckduckgo-search library. We don't need requests/bs4 anymore.
-        run: pip install telethon duckduckgo-search
+      - name: Install Telethon
+        # We only need telethon for this script
+        run: pip install telethon
 
       - name: Run Python Discovery Script
         env:
@@ -38,5 +37,5 @@ jobs:
       - name: Commit and push found channels
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "📜 Discovered new potential channels via DDG"
+          commit_message: "📜 Crawled for new potential channels"
           file_pattern: found_channels.txt
