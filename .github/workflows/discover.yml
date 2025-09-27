@@ -24,8 +24,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install Dependencies
-        # Added requests and beautifulsoup4 for Google scraping
-        run: pip install telethon requests beautifulsoup4
+        # --- THIS IS THE UPDATED LINE ---
+        # Added the new duckduckgo-search library. We don't need requests/bs4 anymore.
+        run: pip install telethon duckduckgo-search
 
       - name: Run Python Discovery Script
         env:
@@ -37,5 +38,5 @@ jobs:
       - name: Commit and push found channels
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "📜 Discovered new potential channels via Google"
+          commit_message: "📜 Discovered new potential channels via DDG"
           file_pattern: found_channels.txt
