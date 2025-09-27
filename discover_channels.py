@@ -4,9 +4,10 @@ import time
 import random
 import os
 import base64
+import requests
+from bs4 import BeautifulSoup
 from datetime import datetime, timezone, timedelta
 from telethon.sync import TelegramClient
-from telethon.tl.types import Channel
 
 # --- CONFIGURATION ---
 API_ID = os.environ.get('API_ID')
@@ -14,36 +15,70 @@ API_HASH = os.environ.get('API_HASH')
 SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 SESSION_NAME = 'my_telegram_session'
 
-# --- NEW: HASHTAG-FOCUSED KEYWORDS ---
-# We are now searching for hashtags that channels use to label their configs.
-# This is a much more direct and effective search method.
-SEARCH_HASHTAGS = [
-    # Russian
-    '#vless', '#vmess', '#trojan', '#proxy', '#впн',
-    # Chinese (with slang)
-    '#V2Ray', '#trojan', '#节点', '#机场', '#订阅',
-    # English/General
-    '#v2ray', '#vpn', '#outline', '#shadowsocks'
+# --- NEW: Google Search Queries ---
+# This is now the engine of our discovery.
+GOOGLE_SEARCH_QUERIES = [
+    'site:t.me "v2ray" "config" "nodes"',
+    'site:t.me "vless" "бесплатно"',
+    'site:t.me "vmess" "免费节点"',
+    'inurl:t.me "shadowsocks" "proxy"',
+    'inurl:t.me "trojan" "梯子"',
+    'site:t.me "v2ray" "subscription" "link"',
+    'site:t.me "обход блокировок" "РКН"',
+    'site:t.me "V2Ray 机场" "订阅"'
 ]
 
 OUTPUT_FILE = 'found_channels.txt'
 RUN_DURATION_MINUTES = 4
-SEARCH_DELAYS_SECONDS = [4, 5, 6, 7]
+SEARCH_DELAYS_SECONDS = [10, 15, 20] # Longer delays for external requests
 
-# --- Quality Analysis Configuration ---
+# --- Quality Analysis Configuration (Unchanged) ---
 ANALYSIS_MESSAGE_LIMIT = 30
-MIN_CONFIG_HITS_THRESHOLD = 3 # Needs to find at least 3 configs in recent posts
+MIN_CONFIG_HITS_THRESHOLD = 2
 MAX_DAYS_SINCE_LAST_POST = 14
 VALIDATION_KEYWORDS = re.compile(r'vless://|vmess://|ss://|trojan://', re.IGNORECASE)
 CHANNEL_LINK_REGEX = re.compile(r't\.me/([a-zA-Z0-9_]{5,})')
 # --- END OF CONFIGURATION ---
 
 
+async def search_google_for_telegram_links(query):
+    """Searches Google and extracts t.me links from the results."""
+    print(f"  -> Searching Google for: '{query}'")
+    try:
+        # Use a common user-agent to look like a real browser
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        # The search URL
+        url = f"https://www.google.com/search?q={requests.utils.quote(query)}"
+        
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status() # Raise an exception for bad status codes
+        
+        # Use BeautifulSoup to parse the HTML and find links
+        soup = BeautifulSoup(response.text, 'html.parser')
+        links = soup.find_all('a')
+        
+        found_channels = set()
+        for link in links:
+            href = link.get('href')
+            if href:
+                # Find links that point to t.me
+                match = CHANNEL_LINK_REGEX.search(href)
+                if match:
+                    found_channels.add(match.group(1).lower())
+        
+        print(f"  -> Found {len(found_channels)} potential channel links from Google.")
+        return list(found_channels)
+    except Exception as e:
+        print(f"  -> ERROR during Google search: {e}")
+        return []
+
+
 async def main():
-    print("--- Telegram Channel Discoverer v3.0 (Hashtag Hunter) ---")
+    print("--- Telegram Channel Discoverer v4.0 (Google Scraper) ---")
     if not all([API_ID, API_HASH, SESSION_STRING]):
-        print("FATAL: Required secrets are not set.")
-        return
+        print("FATAL: Required secrets are not set."); return
 
     try:
         with open(f"{SESSION_NAME}.session", 'wb') as f: f.write(base64.b64decode(SESSION_STRING))
@@ -56,87 +91,71 @@ async def main():
             already_processed.update(line.strip().lower() for line in f)
         print(f"Loaded {len(already_processed)} previously discovered channels.")
     
-    # Use a set to avoid adding duplicate channels to the queue in the first place
     channels_to_scan_queue = set()
     newly_discovered_channels = []
     start_time = time.time()
     run_duration_seconds = RUN_DURATION_MINUTES * 60
     
+    # --- Step 1: Seed the queue from Google ---
+    print("\n--- Seeding initial channels from Google searches ---")
+    random.shuffle(GOOGLE_SEARCH_QUERIES)
+    for query in GOOGLE_SEARCH_QUERIES:
+        if time.time() - start_time > run_duration_seconds: break
+        
+        google_results = await search_google_for_telegram_links(query)
+        for username in google_results:
+            if username not in already_processed:
+                channels_to_scan_queue.add(username)
+        
+        await asyncio.sleep(random.choice(SEARCH_DELAYS_SECONDS))
+    
+    if not channels_to_scan_queue:
+        print("\nGoogle search did not yield any new channels to analyze. Exiting.")
+        return
+        
+    scan_list = list(channels_to_scan_queue)
+    print(f"\n--- Found {len(scan_list)} unique seed channels from Google. Starting analysis... ---")
+    
+    # --- Step 2: Analyze the channels found via Google ---
     client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
     try:
         await client.connect()
-        if not await client.is_user_authorized():
-            print("FATAL: Session is not authorized."); return
-        print("Successfully connected to Telegram.")
+        if not await client.is_user_authorized(): print("FATAL: Session is not authorized."); return
+        print("Successfully connected to Telegram for analysis.")
         
-        # --- Step 1: Seed the queue using hashtag searches ---
-        print("\n--- Seeding initial channels from hashtag searches ---")
-        random.shuffle(SEARCH_HASHTAGS)
-        for hashtag in SEARCH_HASHTAGS:
-            if time.time() - start_time > run_duration_seconds: break
-            print(f"Searching for hashtag: '{hashtag}'")
-            try:
-                # Use global message search (iter_messages with None)
-                async for message in client.iter_messages(None, search=hashtag, limit=15):
-                    if (hasattr(message.peer_id, 'channel_id') and 
-                        message.chat and hasattr(message.chat, 'username') and 
-                        message.chat.username):
-                        
-                        username = message.chat.username.lower()
-                        if username not in already_processed:
-                            channels_to_scan_queue.add(username)
-                            
-            except Exception as e:
-                 print(f"  -> Error during search for '{hashtag}': {e}")
-            await asyncio.sleep(random.choice(SEARCH_DELAYS_SECONDS))
-        
-        # Convert set to a list to process
-        scan_list = list(channels_to_scan_queue)
-        print(f"\n--- Found {len(scan_list)} unique seed channels. Starting analysis... ---")
-        
-        # --- Step 2: The Analysis & Crawling Loop ---
         while scan_list:
             if time.time() - start_time > run_duration_seconds:
-                print("\nTime limit reached. Stopping crawler.")
-                break
+                print("\nTime limit reached. Stopping analysis."); break
                 
             username_to_check = scan_list.pop(0)
-            if username_to_check in already_processed:
-                continue # Skip if we've already processed it
-
+            if username_to_check in already_processed: continue
+            
             print(f"\nAnalyzing @{username_to_check}...")
-            already_processed.add(username_to_check) # Mark as processed for this session
+            already_processed.add(username_to_check)
 
             try:
-                is_active = False; config_hits = 0; found_links_in_channel = set()
+                is_active = False; config_hits = 0
                 messages = [msg async for msg in client.iter_messages(username_to_check, limit=ANALYSIS_MESSAGE_LIMIT)]
                 if messages:
                     if datetime.now(timezone.utc) - messages[0].date < timedelta(days=MAX_DAYS_SINCE_LAST_POST): is_active = True
                     for msg in messages:
-                        if msg.text:
-                            if VALIDATION_KEYWORDS.search(msg.text): config_hits += 1
-                            for match in CHANNEL_LINK_REGEX.finditer(msg.text):
-                                found_links_in_channel.add(match.group(1).lower())
+                        if msg.text and VALIDATION_KEYWORDS.search(msg.text): config_hits += 1
                 
                 if is_active and config_hits >= MIN_CONFIG_HITS_THRESHOLD:
                     print(f"  -> SUCCESS! @{username_to_check} is a good source. Config Hits: {config_hits}")
                     newly_discovered_channels.append(username_to_check)
-                    for link in found_links_in_channel:
-                        if link not in already_processed:
-                            print(f"    -> Crawled new link to explore: @{link}")
-                            scan_list.append(link) # Add to our to-do list
                 else:
                     print(f"  -> REJECTED. Active: {is_active}, Config Hits: {config_hits}")
-            
             except Exception as e:
                 print(f"  -> Could not analyze @{username_to_check}. Skipping. Error: {e}")
             
-            await asyncio.sleep(random.choice(SEARCH_DELAYS_SECONDS))
-
+            await asyncio.sleep(2) # Small delay between analyzing channels
+            
     finally:
         await client.disconnect()
         print("\nDisconnected from Telegram.")
 
+    # --- Step 3: Save results ---
     if newly_discovered_channels:
         print(f"\n--- Discovery Complete ---")
         unique_new = sorted(list(set(newly_discovered_channels)))
@@ -144,7 +163,7 @@ async def main():
         with open(OUTPUT_FILE, 'a') as f:
             for username in unique_new:
                 f.write(f"{username}\n")
-        print(f"Usernames have been appended to {OUTPUT_FILE}.")
+        print(f"Usernames appended to {OUTPUT_FILE}.")
     else:
         print("\n--- Discovery Complete ---")
         print("No new, high-quality channels were found.")
