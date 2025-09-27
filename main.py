@@ -15,7 +15,7 @@ TARGET_GROUPS = [
     'letendorproxy', 'MuteVpnN', 'ShadowProxy66', 'free_vpn02', 'falcunargo',
     'DirectVPN', 'DailyV2RY', 'daily_configs', 'configpluse', 'ghalagyann',
     'ghalagyann2', 'Leecher56', 'tigervpnorg', 'v2rayng_fars', 'Mrsoulb',
-    'vpnplusee_free', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'vmess_ir',
+    'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'v2ray_official' 'horn_proxy', 'ocean_peace_mind', 'safavpnn', 'vless_config', 'vpn_tehran', 'vpnz4','customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'vmess_ir',
     'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 'v2rayroz',
     'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast',
     'v2ray_official', 'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn',
