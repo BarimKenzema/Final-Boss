@@ -2,8 +2,6 @@ name: Discover New Telegram Channels
 
 on:
   schedule:
-    # Runs every 16 minutes, which is about 4 times per hour.
-    # This is an unusual schedule, which is good for avoiding patterns.
     - cron: '*/16 * * * *'
   workflow_dispatch:
 
@@ -15,7 +13,6 @@ jobs:
 
     steps:
       - name: Check out repository
-        # This step is crucial to get the existing found_channels.txt file
         uses: actions/checkout@v4
 
       - name: Wait for a random time (1 to 3 minutes)
@@ -26,8 +23,9 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Telethon
-        run: pip install telethon
+      - name: Install Dependencies
+        # Added requests and beautifulsoup4 for Google scraping
+        run: pip install telethon requests beautifulsoup4
 
       - name: Run Python Discovery Script
         env:
@@ -39,6 +37,5 @@ jobs:
       - name: Commit and push found channels
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "📜 Discovered new potential channels"
-          # Only commit if the discovery file has changed
+          commit_message: "📜 Discovered new potential channels via Google"
           file_pattern: found_channels.txt
