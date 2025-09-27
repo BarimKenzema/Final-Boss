@@ -8,3 +8,8 @@ surfboardv2ray
 letendorproxy
 mutevpnn
 v2ray_official
+horn_proxy
+ocean_peace_mind
+safavpnn
+shahincrafto
+vless_config
