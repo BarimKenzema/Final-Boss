@@ -8,28 +8,20 @@ from datetime import datetime, timezone, timedelta
 from telethon.sync import TelegramClient
 from telethon.tl.types import Channel
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION (Unchanged) ---
 API_ID = os.environ.get('API_ID')
 API_HASH = os.environ.get('API_HASH')
 SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 SESSION_NAME = 'my_telegram_session'
 
-# --- NEW: Your Manual Seed List ---
-# This is the most important part. Add known good, active channels here
-# to give the crawler a starting point.
 SEED_CHANNELS = [
-    'manvpn',
-    'surfboardv2ray',
-    'GetConfigIR',
-    'V2ConfigGB',
-    'Pro_v2rayShop'
+    'letendorproxy', 'MuteVpnN', 'ShadowProxy66',
+    'v2rayng_news', 'PrivateConfig', 'v2ray_official'
 ]
-
 OUTPUT_FILE = 'found_channels.txt'
-RUN_DURATION_MINUTES = 5 # Can be longer now as it's more efficient
-SEARCH_DELAYS_SECONDS = [2, 3, 4] # Shorter delays, no external APIs
+RUN_DURATION_MINUTES = 5 
+SEARCH_DELAYS_SECONDS = [2, 3, 4, 5]
 
-# --- Quality Analysis Configuration (Unchanged) ---
 ANALYSIS_MESSAGE_LIMIT = 50
 MIN_CONFIG_HITS_THRESHOLD = 3
 MAX_DAYS_SINCE_LAST_POST = 14
@@ -39,7 +31,7 @@ CHANNEL_LINK_REGEX = re.compile(r't\.me/([a-zA-Z0-9_]{5,})')
 
 
 async def main():
-    print("--- Telegram Channel Crawler v8.0 (Seed & Crawl) ---")
+    print("--- Telegram Channel Crawler v8.1 (Corrected Logic) ---")
     if not all([API_ID, API_HASH, SESSION_STRING]):
         print("FATAL: Required secrets are not set.")
         return
@@ -49,27 +41,23 @@ async def main():
     except Exception as e:
         print(f"FATAL: Could not write session file. Error: {e}"); return
 
-    already_processed = set()
+    # This is our long-term memory.
+    already_found_in_file = set()
     if os.path.exists(OUTPUT_FILE):
         with open(OUTPUT_FILE, 'r') as f:
-            already_processed.update(line.strip().lower() for line in f)
-        print(f"Loaded {len(already_processed)} previously discovered channels.")
+            already_found_in_file.update(line.strip().lower() for line in f)
+        print(f"Loaded {len(already_found_in_file)} previously discovered channels from file.")
     
-    # --- The new "to-do list" is seeded from your manual list ---
-    channels_to_scan_queue = []
-    for seed in SEED_CHANNELS:
-        seed_lower = seed.lower()
-        if seed_lower not in already_processed:
-            channels_to_scan_queue.append(seed_lower)
-            already_processed.add(seed_lower) # Mark as seen immediately
-    
+    # --- THIS IS THE CORRECTED LOGIC ---
+    # The queue ALWAYS starts with the seeds.
+    channels_to_scan_queue = [seed.lower() for seed in SEED_CHANNELS]
+    # The "processed" set for THIS RUN starts with the seeds to avoid re-analyzing them if found via crawl.
+    processed_this_run = set(channels_to_scan_queue)
+    # --- END OF CORRECTION ---
+
     newly_discovered_channels = []
     start_time = time.time()
     run_duration_seconds = RUN_DURATION_MINUTES * 60
-    
-    if not channels_to_scan_queue:
-        print("\nSeed list contains no new channels to process. Exiting.")
-        return
         
     print(f"\n--- Starting crawl with {len(channels_to_scan_queue)} seed channels... ---")
     
@@ -98,17 +86,19 @@ async def main():
                             for match in CHANNEL_LINK_REGEX.finditer(msg.text):
                                 found_links_in_channel.add(match.group(1).lower())
                 
-                if is_active and config_hits >= MIN_CONFIG_HITS_THRESHOLD:
-                    print(f"  -> SUCCESS! @{username_to_check} is a good source. Config Hits: {config_hits}")
-                    # Save with original casing if possible, or lowercase
-                    newly_discovered_channels.append(next((c for c in SEED_CHANNELS if c.lower() == username_to_check), username_to_check))
-                    for link in found_links_in_channel:
-                        if link not in already_processed:
-                            print(f"    -> Crawled new link to explore: @{link}")
-                            channels_to_scan_queue.append(link)
-                            already_processed.add(link)
-                else:
-                    print(f"  -> REJECTED. Active: {is_active}, Config Hits: {config_hits}")
+                # We only save channels that are not already in our long-term file.
+                if is_active and config_hits >= MIN_CONFIG_HITS_THRESHOLD and username_to_check not in already_found_in_file:
+                    print(f"  -> SUCCESS! @{username_to_check} is a new good source. Config Hits: {config_hits}")
+                    newly_discovered_channels.append(username_to_check)
+                elif not is_active or config_hits < MIN_CONFIG_HITS_THRESHOLD:
+                     print(f"  -> REJECTED. Active: {is_active}, Config Hits: {config_hits} (Threshold: {MIN_CONFIG_HITS_THRESHOLD})")
+                
+                # Crawl for new links regardless of whether the current channel is "good" or not.
+                for link in found_links_in_channel:
+                    if link not in processed_this_run:
+                        print(f"    -> Crawled new link to explore: @{link}")
+                        channels_to_scan_queue.append(link)
+                        processed_this_run.add(link)
             except Exception as e:
                 print(f"  -> Could not analyze @{username_to_check}. Skipping. Error: {e}")
             
@@ -128,7 +118,7 @@ async def main():
         print(f"Usernames appended to {OUTPUT_FILE}.")
     else:
         print("\n--- Discovery Complete ---")
-        print("No new, high-quality channels were found.")
+        print("No new, high-quality channels were found in this run.")
 
 if __name__ == "__main__":
     asyncio.run(main())
