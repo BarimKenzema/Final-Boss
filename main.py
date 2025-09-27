@@ -93,4 +93,14 @@ def get_config_attributes(config_str):
         hostname = parsed.hostname
         network = params.get('type', ['tcp'])[0].lower()
         security = params.get('security', ['none'])[0].lower()
-        if security != 'reality' and 'pbk' 
+        # --- THIS IS THE CORRECTED LINE ---
+        if security != 'reality' and 'pbk' in params: security = 'reality'
+        # --- END OF CORRECTION ---
+        country = get_country_from_hostname(hostname).upper()
+        return {'protocol': protocol, 'network': network, 'security': security, 'country': country}
+    except Exception: return None
+
+def find_and_validate_configs(text):
+    if not text: return []
+    pattern = r'\b(?:vless|vmess|trojan|ss)://[^\s<>"\'`]+'
+    
