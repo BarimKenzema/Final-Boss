@@ -39,7 +39,6 @@ def country_code_to_flag(iso_code): return COUNTRY_FLAGS.get(iso_code, "🔓")
 
 # --- THIS FUNCTION IS THE ONLY PART THAT HAS CHANGED ---
 def get_country_from_hostname(hostname):
-    """Performs DNS and GeoIP lookup with enhanced logging for failures."""
     if not hostname: return "XX"
     ip_addr = dns_cache.get(hostname)
     if not ip_addr:
@@ -47,23 +46,12 @@ def get_country_from_hostname(hostname):
             if ipaddress.ip_address(hostname): ip_addr = hostname
             else: ip_addr = resolver.resolve(hostname, 'A')[0].to_text()
             dns_cache[hostname] = ip_addr
-        except Exception as e:
-            # NEW: Log the DNS failure
-            print(f"  -> DNS lookup failed for '{hostname}': {e}")
-            dns_cache[hostname] = None
-            return "XX"
-    if not ip_addr: return "XX"
-
-    if not geoip_reader: return "XX"
+        except Exception:
+            dns_cache[hostname] = None; return "XX"
+    if not ip_addr or not geoip_reader: return "XX"
     try:
         return geoip_reader.country(ip_addr).country.iso_code or "XX"
-    except geoip2.errors.AddressNotFoundError:
-        # NEW: Log the "not found" error
-        print(f"  -> GeoIP lookup failed: IP '{ip_addr}' not found in the database.")
-        return "XX"
-    except Exception as e:
-        # NEW: Log any other GeoIP errors
-        print(f"  -> GeoIP lookup failed for '{ip_addr}': {e}")
+    except Exception: 
         return "XX"
 
 def get_config_attributes(config_str):
