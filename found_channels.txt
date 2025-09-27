@@ -5,3 +5,6 @@ V2ConfigGB
 azarandoozvpn
 manvpn
 surfboardv2ray
+letendorproxy
+mutevpnn
+v2ray_official
