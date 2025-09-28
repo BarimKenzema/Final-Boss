@@ -181,8 +181,8 @@ async def main():
             f"countries/{attrs['country'].lower()}.txt"
         ]
         # Add special category paths
-        if attrs['security'] == 'reality' and attrs['network'] == 'grpc':
-            paths_to_update.append('special/reality_grpc.txt')
+        if attrs['security'] == 'reality' and attrs['country'] == 'XX':
+            paths_to_update.append('special/reality_xx.txt')
         if attrs['network'] == 'grpc' and attrs['country'] == 'XX':
             paths_to_update.append('special/grpc_xx.txt')
         # YOUR NEW CATEGORY IS ADDED HERE
