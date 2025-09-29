@@ -20,7 +20,7 @@ TARGET_GROUPS = [
     'vpn_tehran', 'vpnz4', 'customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 
     'vmess_ir', 'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 
     'v2rayroz', 'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast',
-    'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn',
+    'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn', 'FG_Link',
     'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net'
 ]
 OUTPUT_FILE_MAIN = 'mobo_net_subs.txt'
