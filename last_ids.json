@@ -1,9 +1,9 @@
 {
-  "letendorproxy": 147614,
-  "MuteVpnN": 65467,
+  "letendorproxy": 147715,
+  "MuteVpnN": 65474,
   "ShadowProxy66": 13007,
   "free_vpn02": 2920,
-  "falcunargo": 7432,
+  "falcunargo": 7434,
   "DirectVPN": 19001,
   "DailyV2RY": 5582,
   "daily_configs": 2907,
@@ -26,7 +26,7 @@
   "vpn_tehran": 6555,
   "vpnz4": 5817,
   "customv2ray": 18336,
-  "vpnfail_v2ray": 38570,
+  "vpnfail_v2ray": 38572,
   "vpn_ioss": 28135,
   "vmessorg": 6852,
   "vmess_ir": 9126,
@@ -49,5 +49,5 @@
   "outline_ir": 10441,
   "mehrosaboran": 19516,
   "marambashi": 38254,
-  "hope_net": 82269
+  "hope_net": 82273
 }
