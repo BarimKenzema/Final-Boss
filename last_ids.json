@@ -1,6 +1,6 @@
 {
-  "letendorproxy": 148307,
-  "MuteVpnN": 65558,
+  "letendorproxy": 148354,
+  "MuteVpnN": 65563,
   "ShadowProxy66": 13012,
   "free_vpn02": 2920,
   "falcunargo": 7443,
@@ -20,8 +20,8 @@
   "surfboardv2ray": 1434,
   "v2ray_official": 8236,
   "horn_proxy": 1493,
-  "ocean_peace_mind": 852,
-  "safavpnn": 8922,
+  "ocean_peace_mind": 853,
+  "safavpnn": 8925,
   "vless_config": 2709,
   "vpn_tehran": 6555,
   "vpnz4": 5818,
@@ -29,14 +29,14 @@
   "vpnfail_v2ray": 38592,
   "vpn_ioss": 28135,
   "vmessorg": 6852,
-  "vmess_ir": 9129,
+  "vmess_ir": 9130,
   "vlessconfig": 18123,
   "vistav2ray": 27128,
   "vipv2rayngnp": 8667,
   "v2rayvpn2": 16189,
   "v2rayroz": 19420,
   "v2rayopen": 1712,
-  "v2rayngvpn": 23926,
+  "v2rayngvpn": 23927,
   "v2rayng_matsuri": 8589,
   "v2rayng_fast": 21087,
   "v2pedia": 2865,
@@ -49,5 +49,5 @@
   "outline_ir": 10448,
   "mehrosaboran": 19517,
   "marambashi": 38257,
-  "hope_net": 82291
+  "hope_net": 82293
 }
