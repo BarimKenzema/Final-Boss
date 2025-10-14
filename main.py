@@ -64,42 +64,46 @@ def resolve_domain_to_ip(hostname):
     try:
         ip_addr = resolver.resolve(hostname, 'A')[0].to_text()
         dns_cache[hostname] = ip_addr
-        print(f"✓ Resolved {hostname} → {ip_addr}")
         return ip_addr
-    except Exception as e:
-        print(f"✗ DNS resolution failed for {hostname}: {e}")
+    except Exception:
         dns_cache[hostname] = None
         return None
 
-# --- FIXED: VMess Parser with Multiple Encoding Support ---
+# --- FIXED: Completely Silent VMess Parser ---
 def parse_vmess_config(config_str):
     """
     Parses a VMess config and returns the decoded JSON object.
-    Tries multiple encodings to handle non-UTF-8 configs.
-    Returns None if parsing fails.
+    Returns None silently if parsing fails (no error messages).
     """
     try:
         encoded = config_str.replace('vmess://', '').strip()
-        # Add padding if needed
-        encoded += '=' * (4 - len(encoded) % 4)
+        encoded = encoded.rstrip('.,;!?')
         
-        # Try UTF-8 first, then latin-1 as fallback
-        decoded_bytes = base64.b64decode(encoded)
+        # Add padding
+        missing_padding = len(encoded) % 4
+        if missing_padding:
+            encoded += '=' * (4 - missing_padding)
         
-        for encoding in ['utf-8', 'latin-1', 'iso-8859-1']:
+        # Decode base64
+        decoded_bytes = base64.b64decode(encoded, validate=True)
+        
+        # Try multiple encodings
+        for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
             try:
-                decoded = decoded_bytes.decode(encoding)
-                return json.loads(decoded)
+                decoded = decoded_bytes.decode(encoding, errors='ignore')
+                parsed = json.loads(decoded)
+                
+                # Validate required fields
+                if 'add' in parsed and 'port' in parsed and 'id' in parsed:
+                    return parsed
+                    
             except (UnicodeDecodeError, json.JSONDecodeError):
                 continue
         
-        # If all encodings fail
-        print(f"Failed to decode VMess config with any known encoding")
         return None
         
-    except Exception as e:
-        print(f"Failed to parse VMess config: {e}")
-        return None
+    except Exception:
+        return None  # Silent fail - no print
 
 # --- Config Fingerprinting for Deduplication ---
 def get_config_fingerprint(config_str):
@@ -135,8 +139,7 @@ def get_config_fingerprint(config_str):
                 return f"ss|{server_part}|{method_pass}"
         
         return None
-    except Exception as e:
-        print(f"Error creating fingerprint: {e}")
+    except Exception:
         return None
 
 # --- Domain to IP Replacement ---
@@ -236,8 +239,7 @@ def replace_domain_with_ip(config_str):
         
         return config_str
     
-    except Exception as e:
-        print(f"Error replacing domain with IP: {e}")
+    except Exception:
         return config_str
 
 def get_country_from_hostname(hostname):
@@ -254,11 +256,11 @@ def get_country_from_hostname(hostname):
     except Exception: 
         return "XX"
 
-# --- Config Attributes Parser (Supports VMess) ---
+# --- UPDATED: Config Attributes Parser with Validation ---
 def get_config_attributes(config_str):
     """
     Extracts protocol, network, security, and country from config.
-    Now properly supports VMess configs.
+    Now properly supports VMess configs and validates all fields.
     """
     try:
         if config_str.startswith('vmess://'):
@@ -266,36 +268,54 @@ def get_config_attributes(config_str):
             if not vmess_data:
                 return None
             
-            return {
-                'protocol': 'vmess',
-                'network': vmess_data.get('net', 'tcp').lower(),
-                'security': vmess_data.get('tls', 'none').lower(),
-                'country': get_country_from_hostname(vmess_data.get('add', '')).upper()
-            }
+            protocol = 'vmess'
+            network = vmess_data.get('net', 'tcp').lower().strip()
+            security = vmess_data.get('tls', 'none').lower().strip()
+            country = get_country_from_hostname(vmess_data.get('add', '')).upper()
         
         else:
             parsed = urlparse(config_str)
             params = parse_qs(parsed.query)
-            protocol = parsed.scheme
+            protocol = parsed.scheme.lower().strip()
             hostname = parsed.hostname
-            network = params.get('type', ['tcp'])[0].lower()
-            security = params.get('security', ['none'])[0].lower()
+            network = params.get('type', ['tcp'])[0].lower().strip()
+            security = params.get('security', ['none'])[0].lower().strip()
             
             # Reality detection
             if security != 'reality' and 'pbk' in params: 
                 security = 'reality'
             
             country = get_country_from_hostname(hostname).upper()
-            
-            return {
-                'protocol': protocol, 
-                'network': network, 
-                'security': security, 
-                'country': country
-            }
+        
+        # --- VALIDATION: Ensure all fields are valid ---
+        
+        # Validate protocol
+        valid_protocols = ['vmess', 'vless', 'trojan', 'ss']
+        if not protocol or protocol not in valid_protocols:
+            return None
+        
+        # Validate and sanitize network
+        valid_networks = ['tcp', 'kcp', 'ws', 'http', 'quic', 'grpc', 'h2', 'httpupgrade', 'splithttp']
+        if not network or network not in valid_networks:
+            network = 'tcp'  # Default fallback
+        
+        # Validate and sanitize security
+        valid_security = ['none', 'tls', 'reality', 'xtls']
+        if not security or security not in valid_security:
+            security = 'none'  # Default fallback
+        
+        # Validate country code (must be 2 letters)
+        if not country or len(country) != 2 or not country.isalpha():
+            country = 'XX'
+        
+        return {
+            'protocol': protocol, 
+            'network': network, 
+            'security': security, 
+            'country': country
+        }
     
-    except Exception as e:
-        print(f"Error parsing config attributes: {e}")
+    except Exception:
         return None
 
 def find_and_validate_configs(text):
@@ -380,7 +400,7 @@ def load_list_from_file(filepath):
 
 # --- MAIN FUNCTION ---
 async def main():
-    print(f"--- Telegram Scraper v10.1 (Domain→IP + Fixed Dedup + Multi-Encoding) ---")
+    print(f"--- Telegram Scraper v10.3 (Silent + Validated) ---")
     global geoip_reader
     
     if not all([API_ID, API_HASH, SESSION_STRING]): 
@@ -449,9 +469,15 @@ async def main():
     
     print(f"\nFound {len(newly_scraped_configs)} raw configs this run.")
 
-    # --- Process Configs with Domain→IP + Deduplication ---
+    # --- UPDATED: Process Configs with Silent Stats Tracking ---
     new_configs_data = []
     seen_fingerprints = set()
+    stats = {
+        'total_scraped': len(newly_scraped_configs),
+        'failed_parse': 0,
+        'duplicates': 0,
+        'valid_unique': 0
+    }
     
     for raw_config in newly_scraped_configs:
         # Replace domain with IP
@@ -461,11 +487,12 @@ async def main():
         fingerprint = get_config_fingerprint(ip_config)
         
         if fingerprint and fingerprint in seen_fingerprints:
-            print(f"⊘ Duplicate detected, skipping: {fingerprint}")
+            stats['duplicates'] += 1
             continue
         
-        # Get attributes
+        # Get attributes (with validation)
         attrs = get_config_attributes(ip_config)
+        
         if attrs:
             if fingerprint:
                 seen_fingerprints.add(fingerprint)
@@ -476,8 +503,19 @@ async def main():
                 'attrs': attrs,
                 'fingerprint': fingerprint
             })
+            stats['valid_unique'] += 1
+        else:
+            stats['failed_parse'] += 1
     
-    print(f"After deduplication: {len(new_configs_data)} unique configs.")
+    # Print summary
+    print(f"\n{'='*50}")
+    print(f"  PROCESSING SUMMARY")
+    print(f"{'='*50}")
+    print(f"  Total scraped configs    : {stats['total_scraped']}")
+    print(f"  ✓ Valid unique configs   : {stats['valid_unique']}")
+    print(f"  ⊘ Duplicates skipped     : {stats['duplicates']}")
+    print(f"  ✗ Failed/corrupted       : {stats['failed_parse']}")
+    print(f"{'='*50}\n")
 
     # --- Build all possible file paths ---
     all_possible_paths = {OUTPUT_FILE_MAIN}
@@ -500,15 +538,17 @@ async def main():
         if attrs['security'] == 'reality' and attrs['network'] == 'tcp': 
             all_possible_paths.add('special/reality_tcp.txt')
 
-    # --- FIXED: Process files with proper deduplication ---
-    print("\n--- Updating and pruning all subscription files ---")
+    # --- Process files with proper deduplication ---
+    print("--- Updating and pruning all subscription files ---")
     final_file_count = 0
+    files_cleaned = 0
+    total_dupes_removed = 0
     
     for path in sorted(list(all_possible_paths)):
         # Load existing configs
         raw_existing_list = load_list_from_file(path)
         
-        # STEP 1: Deduplicate existing configs first
+        # STEP 1: Deduplicate existing configs first (SILENT)
         deduplicated_existing = []
         existing_fingerprints = set()
         
@@ -517,18 +557,18 @@ async def main():
             if fp and fp not in existing_fingerprints:
                 deduplicated_existing.append(existing_config)
                 existing_fingerprints.add(fp)
-            elif fp:
-                # Silent skip of duplicate
-                pass
-            else:
-                # Keep configs without fingerprints (shouldn't happen, but safe)
+            elif not fp:
+                # Keep configs without fingerprints
                 deduplicated_existing.append(existing_config)
         
         initial_count = len(raw_existing_list)
         after_dedup_count = len(deduplicated_existing)
         
         if initial_count > after_dedup_count:
-            print(f"Cleaned {path}: removed {initial_count - after_dedup_count} internal duplicates")
+            dupes_removed = initial_count - after_dedup_count
+            total_dupes_removed += dupes_removed
+            files_cleaned += 1
+            print(f"Cleaned {path}: removed {dupes_removed} internal duplicates")
         
         # STEP 2: Add new configs that belong to this category
         added_count = 0
@@ -582,7 +622,13 @@ async def main():
                 f.write(content)
             final_file_count += 1
     
-    print(f"\nSuccessfully saved/updated {final_file_count} subscription files.")
+    print(f"\n{'='*50}")
+    print(f"  FILE UPDATE SUMMARY")
+    print(f"{'='*50}")
+    print(f"  Files saved/updated      : {final_file_count}")
+    print(f"  Files cleaned            : {files_cleaned}")
+    print(f"  Total dupes removed      : {total_dupes_removed}")
+    print(f"{'='*50}\n")
     
     if new_latest_ids:
         with open(STATE_FILE, 'w') as f: 
