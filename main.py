@@ -40,7 +40,7 @@ geoip_reader = None
 def country_code_to_flag(iso_code): 
     return COUNTRY_FLAGS.get(iso_code, "🌐")
 
-# --- NEW: Domain to IP Resolution ---
+# --- Domain to IP Resolution ---
 def resolve_domain_to_ip(hostname):
     """
     Resolves a domain to IP address with caching.
@@ -71,23 +71,37 @@ def resolve_domain_to_ip(hostname):
         dns_cache[hostname] = None
         return None
 
-# --- NEW: VMess Parser ---
+# --- FIXED: VMess Parser with Multiple Encoding Support ---
 def parse_vmess_config(config_str):
     """
     Parses a VMess config and returns the decoded JSON object.
+    Tries multiple encodings to handle non-UTF-8 configs.
     Returns None if parsing fails.
     """
     try:
         encoded = config_str.replace('vmess://', '').strip()
         # Add padding if needed
         encoded += '=' * (4 - len(encoded) % 4)
-        decoded = base64.b64decode(encoded).decode('utf-8')
-        return json.loads(decoded)
+        
+        # Try UTF-8 first, then latin-1 as fallback
+        decoded_bytes = base64.b64decode(encoded)
+        
+        for encoding in ['utf-8', 'latin-1', 'iso-8859-1']:
+            try:
+                decoded = decoded_bytes.decode(encoding)
+                return json.loads(decoded)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+        
+        # If all encodings fail
+        print(f"Failed to decode VMess config with any known encoding")
+        return None
+        
     except Exception as e:
         print(f"Failed to parse VMess config: {e}")
         return None
 
-# --- NEW: Config Fingerprinting for Deduplication ---
+# --- Config Fingerprinting for Deduplication ---
 def get_config_fingerprint(config_str):
     """
     Creates a unique fingerprint for a config based on:
@@ -125,7 +139,7 @@ def get_config_fingerprint(config_str):
         print(f"Error creating fingerprint: {e}")
         return None
 
-# --- NEW: Domain to IP Replacement ---
+# --- Domain to IP Replacement ---
 def replace_domain_with_ip(config_str):
     """
     Replaces domain with IP address in config while preserving SNI/host.
@@ -240,7 +254,7 @@ def get_country_from_hostname(hostname):
     except Exception: 
         return "XX"
 
-# --- UPDATED: Config Attributes Parser (Supports VMess) ---
+# --- Config Attributes Parser (Supports VMess) ---
 def get_config_attributes(config_str):
     """
     Extracts protocol, network, security, and country from config.
@@ -366,14 +380,14 @@ def load_list_from_file(filepath):
 
 # --- MAIN FUNCTION ---
 async def main():
-    print(f"--- Telegram Scraper v10.0 (Domain→IP + True Deduplication) ---")
+    print(f"--- Telegram Scraper v10.1 (Domain→IP + Fixed Dedup + Multi-Encoding) ---")
     global geoip_reader
     
     if not all([API_ID, API_HASH, SESSION_STRING]): 
         print("FATAL: Required secrets not set.")
         return
 
-    # --- UPDATED: GeoIP Download with Multiple Mirrors ---
+    # --- GeoIP Download with Multiple Mirrors ---
     if not os.path.exists(GEOIP_DB_PATH):
         print("Downloading GeoIP database...")
         urls = [
@@ -435,7 +449,7 @@ async def main():
     
     print(f"\nFound {len(newly_scraped_configs)} raw configs this run.")
 
-    # --- UPDATED: Process Configs with Domain→IP + Deduplication ---
+    # --- Process Configs with Domain→IP + Deduplication ---
     new_configs_data = []
     seen_fingerprints = set()
     
@@ -478,7 +492,7 @@ async def main():
         all_possible_paths.add(f"security/{attrs['security']}.txt")
         all_possible_paths.add(f"countries/{attrs['country'].lower()}.txt")
         
-        # --- FIXED: Special category logic ---
+        # Special category logic
         if attrs['security'] == 'reality' and attrs['network'] == 'ws': 
             all_possible_paths.add('special/reality_xx.txt')
         if attrs['network'] == 'grpc' and attrs['country'] == 'XX': 
@@ -486,24 +500,38 @@ async def main():
         if attrs['security'] == 'reality' and attrs['network'] == 'tcp': 
             all_possible_paths.add('special/reality_tcp.txt')
 
-    # --- UPDATED: Process files with fingerprint-based deduplication ---
+    # --- FIXED: Process files with proper deduplication ---
     print("\n--- Updating and pruning all subscription files ---")
     final_file_count = 0
     
     for path in sorted(list(all_possible_paths)):
         # Load existing configs
-        current_list = load_list_from_file(path)
+        raw_existing_list = load_list_from_file(path)
         
-        # Build fingerprint set from existing configs
+        # STEP 1: Deduplicate existing configs first
+        deduplicated_existing = []
         existing_fingerprints = set()
-        for existing_config in current_list:
+        
+        for existing_config in raw_existing_list:
             fp = get_config_fingerprint(existing_config)
-            if fp:
+            if fp and fp not in existing_fingerprints:
+                deduplicated_existing.append(existing_config)
                 existing_fingerprints.add(fp)
+            elif fp:
+                # Silent skip of duplicate
+                pass
+            else:
+                # Keep configs without fingerprints (shouldn't happen, but safe)
+                deduplicated_existing.append(existing_config)
         
-        initial_count = len(current_list)
+        initial_count = len(raw_existing_list)
+        after_dedup_count = len(deduplicated_existing)
         
-        # Add new configs that belong to this category
+        if initial_count > after_dedup_count:
+            print(f"Cleaned {path}: removed {initial_count - after_dedup_count} internal duplicates")
+        
+        # STEP 2: Add new configs that belong to this category
+        added_count = 0
         for new_config in new_configs_data:
             renamed_config = new_config['renamed']
             attrs = new_config['attrs']
@@ -530,22 +558,26 @@ async def main():
 
             # Add if belongs and not duplicate
             if belongs and fingerprint and fingerprint not in existing_fingerprints:
-                current_list.append(renamed_config)
+                deduplicated_existing.append(renamed_config)
                 existing_fingerprints.add(fingerprint)
+                added_count += 1
 
-        # Prune if exceeds max
-        if len(current_list) > MAX_CONFIGS_PER_FILE:
-            num_to_remove = len(current_list) - MAX_CONFIGS_PER_FILE
-            current_list = current_list[num_to_remove:]
-            print(f"Pruned {path}: had {initial_count} + new, removed {num_to_remove} oldest.")
+        # STEP 3: Prune if exceeds max (FIFO - remove oldest)
+        final_list = deduplicated_existing
+        if len(final_list) > MAX_CONFIGS_PER_FILE:
+            num_to_remove = len(final_list) - MAX_CONFIGS_PER_FILE
+            final_list = final_list[num_to_remove:]  # Keep newest
+            print(f"Pruned {path}: {after_dedup_count} existing + {added_count} new = {len(deduplicated_existing)}, removed {num_to_remove} oldest → {len(final_list)} final")
+        elif added_count > 0:
+            print(f"Updated {path}: {after_dedup_count} existing + {added_count} new = {len(final_list)} configs")
         
-        # Save
-        if current_list:
+        # STEP 4: Save
+        if final_list:
             dir_name = os.path.dirname(path)
             if dir_name: 
                 os.makedirs(dir_name, exist_ok=True)
             
-            content = base64.b64encode("\n".join(current_list).encode('utf-8')).decode('utf-8')
+            content = base64.b64encode("\n".join(final_list).encode('utf-8')).decode('utf-8')
             with open(path, 'w') as f: 
                 f.write(content)
             final_file_count += 1
