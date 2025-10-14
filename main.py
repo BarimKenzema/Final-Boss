@@ -479,7 +479,7 @@ async def main():
         all_possible_paths.add(f"countries/{attrs['country'].lower()}.txt")
         
         # --- FIXED: Special category logic ---
-        if attrs['security'] == 'reality' and attrs['country'] == 'XX': 
+        if attrs['security'] == 'reality' and attrs['network'] == 'ws': 
             all_possible_paths.add('special/reality_xx.txt')
         if attrs['network'] == 'grpc' and attrs['country'] == 'XX': 
             all_possible_paths.add('special/grpc_xx.txt')
