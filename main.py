@@ -25,6 +25,7 @@ TARGET_GROUPS = [
     'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net'
 ]
 OUTPUT_FILE_MAIN = 'mobo_net_subs.txt'
+ARCHIVE_FILE = 'all_configs_sni_archive.txt'  # NEW: Archive file
 STATE_FILE = 'last_ids.json'
 NEW_NAME = '@VPNProxyTest'
 MAX_CONFIGS_PER_FILE = 444
@@ -242,6 +243,65 @@ def replace_domain_with_ip(config_str):
     except Exception:
         return config_str
 
+# --- NEW FUNCTION: Address to SNI Replacement ---
+def replace_address_with_sni(config_str):
+    """
+    Replaces the address field with SNI value if the config has SNI.
+    If no SNI exists, returns the original config unchanged.
+    This is the OPPOSITE of replace_domain_with_ip.
+    """
+    try:
+        if config_str.startswith('vmess://'):
+            vmess_data = parse_vmess_config(config_str)
+            if not vmess_data:
+                return config_str
+            
+            sni = vmess_data.get('sni', '').strip()
+            current_add = vmess_data.get('add', '').strip()
+            
+            # Replace address with SNI if SNI exists and is different
+            if sni and sni != current_add:
+                vmess_data['add'] = sni
+                
+                # Re-encode
+                new_json = json.dumps(vmess_data, separators=(',', ':'))
+                new_encoded = base64.b64encode(new_json.encode('utf-8')).decode('utf-8')
+                return f"vmess://{new_encoded}"
+            
+            return config_str
+        
+        elif config_str.startswith(('vless://', 'trojan://')):
+            parsed = urlparse(config_str)
+            params = parse_qs(parsed.query)
+            
+            sni_list = params.get('sni', [])
+            if not sni_list or not sni_list[0]:
+                return config_str
+            
+            sni = sni_list[0].strip()
+            current_host = parsed.hostname
+            
+            # Replace hostname with SNI if different
+            if sni and sni != current_host:
+                # Rebuild netloc with SNI
+                new_netloc = sni
+                if parsed.port:
+                    new_netloc = f"{sni}:{parsed.port}"
+                if parsed.username:
+                    new_netloc = f"{parsed.username}@{new_netloc}"
+                
+                # Reconstruct URL
+                new_parsed = parsed._replace(netloc=new_netloc)
+                return new_parsed.geturl()
+            
+            return config_str
+        
+        # SS configs don't typically have SNI
+        return config_str
+    
+    except Exception:
+        return config_str
+
 def get_country_from_hostname(hostname):
     if not hostname: 
         return "XX"
@@ -400,7 +460,7 @@ def load_list_from_file(filepath):
 
 # --- MAIN FUNCTION ---
 async def main():
-    print(f"--- Telegram Scraper v10.3 (Silent + Validated) ---")
+    print(f"--- Telegram Scraper v11.0 (SNI Archive Added) ---")
     global geoip_reader
     
     if not all([API_ID, API_HASH, SESSION_STRING]): 
@@ -469,6 +529,10 @@ async def main():
     
     print(f"\nFound {len(newly_scraped_configs)} raw configs this run.")
 
+    # ============================================================
+    # EXISTING LOGIC: IP-based processing (UNCHANGED)
+    # ============================================================
+    
     # --- UPDATED: Process Configs with Silent Stats Tracking ---
     new_configs_data = []
     seen_fingerprints = set()
@@ -509,7 +573,7 @@ async def main():
     
     # Print summary
     print(f"\n{'='*50}")
-    print(f"  PROCESSING SUMMARY")
+    print(f"  PROCESSING SUMMARY (IP-BASED)")
     print(f"{'='*50}")
     print(f"  Total scraped configs    : {stats['total_scraped']}")
     print(f"  ✓ Valid unique configs   : {stats['valid_unique']}")
@@ -623,13 +687,87 @@ async def main():
             final_file_count += 1
     
     print(f"\n{'='*50}")
-    print(f"  FILE UPDATE SUMMARY")
+    print(f"  FILE UPDATE SUMMARY (IP-BASED)")
     print(f"{'='*50}")
     print(f"  Files saved/updated      : {final_file_count}")
     print(f"  Files cleaned            : {files_cleaned}")
     print(f"  Total dupes removed      : {total_dupes_removed}")
     print(f"{'='*50}\n")
+
+    # ============================================================
+    # NEW LOGIC: SNI-based archiving (ALL configs)
+    # ============================================================
     
+    print("\n" + "="*60)
+    print("  ARCHIVING ALL CONFIGS WITH SNI-BASED ADDRESSING")
+    print("="*60)
+    
+    # Load existing archive
+    archive_configs = load_list_from_file(ARCHIVE_FILE)
+    archive_fingerprints = set()
+    
+    # Build fingerprint set from existing archive
+    for archived_config in archive_configs:
+        fp = get_config_fingerprint(archived_config)
+        if fp:
+            archive_fingerprints.add(fp)
+    
+    print(f"Loaded {len(archive_configs)} existing configs from archive")
+    
+    # Process newly scraped configs for archiving
+    new_archived = 0
+    archive_stats = {
+        'total_scraped': len(newly_scraped_configs),
+        'already_archived': 0,
+        'newly_added': 0,
+        'failed_parse': 0
+    }
+    
+    for raw_config in newly_scraped_configs:
+        # Apply SNI-based addressing (NEW LOGIC)
+        sni_config = replace_address_with_sni(raw_config)
+        
+        # Get fingerprint for deduplication
+        fingerprint = get_config_fingerprint(sni_config)
+        
+        # Skip if already in archive
+        if fingerprint and fingerprint in archive_fingerprints:
+            archive_stats['already_archived'] += 1
+            continue
+        
+        # Validate config
+        attrs = get_config_attributes(sni_config)
+        
+        if attrs:
+            # Rename with country flag
+            renamed_config = rename_config(sni_config, NEW_NAME, attrs['country'])
+            archive_configs.append(renamed_config)
+            
+            if fingerprint:
+                archive_fingerprints.add(fingerprint)
+            
+            archive_stats['newly_added'] += 1
+        else:
+            archive_stats['failed_parse'] += 1
+    
+    # Save archive (NO LIMIT - keeps everything)
+    if archive_configs:
+        content = base64.b64encode("\n".join(archive_configs).encode('utf-8')).decode('utf-8')
+        with open(ARCHIVE_FILE, 'w') as f:
+            f.write(content)
+    
+    print(f"\n{'='*60}")
+    print(f"  ARCHIVE SUMMARY (SNI-BASED)")
+    print(f"{'='*60}")
+    print(f"  Total scraped this run   : {archive_stats['total_scraped']}")
+    print(f"  ✓ Newly added to archive : {archive_stats['newly_added']}")
+    print(f"  ⊘ Already in archive     : {archive_stats['already_archived']}")
+    print(f"  ✗ Failed validation      : {archive_stats['failed_parse']}")
+    print(f"  📦 Total archive size     : {len(archive_configs)} configs")
+    print(f"  💾 Saved to              : {ARCHIVE_FILE}")
+    print(f"{'='*60}\n")
+    
+    # Save state
     if new_latest_ids:
         with open(STATE_FILE, 'w') as f: 
             json.dump(new_latest_ids, f, indent=2)
