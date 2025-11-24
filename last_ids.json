@@ -1,6 +1,6 @@
 {
-  "letendorproxy": 332248,
-  "MuteVpnN": 75749,
+  "letendorproxy": 332454,
+  "MuteVpnN": 75755,
   "ShadowProxy66": 13632,
   "free_vpn02": 2938,
   "falcunargo": 8090,
@@ -23,11 +23,11 @@
   "horn_proxy": 1598,
   "ocean_peace_mind": 1065,
   "safavpnn": 9847,
-  "vless_config": 2862,
+  "vless_config": 2863,
   "vpn_tehran": 6560,
   "vpnz4": 6025,
   "customv2ray": 18426,
-  "vpnfail_v2ray": 39941,
+  "vpnfail_v2ray": 39942,
   "vpn_ioss": 28381,
   "vmessorg": 6908,
   "vmess_ir": 9801,
@@ -52,6 +52,6 @@
   "marambashi": 38676,
   "hope_net": 84743,
   "FreakConfig": 6475,
-  "meli_proxyy": 33660,
-  "mtproxy_lists": 446763
+  "meli_proxyy": 33661,
+  "mtproxy_lists": 446765
 }
