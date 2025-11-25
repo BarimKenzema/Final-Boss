@@ -1,6 +1,6 @@
 {
-  "letendorproxy": 333376,
-  "MuteVpnN": 75782,
+  "letendorproxy": 333527,
+  "MuteVpnN": 75786,
   "ShadowProxy66": 13632,
   "free_vpn02": 2938,
   "falcunargo": 8095,
@@ -27,7 +27,7 @@
   "vpn_tehran": 6560,
   "vpnz4": 6025,
   "customv2ray": 18426,
-  "vpnfail_v2ray": 39945,
+  "vpnfail_v2ray": 39946,
   "vpn_ioss": 28381,
   "vmessorg": 6908,
   "vmess_ir": 9801,
@@ -53,5 +53,5 @@
   "hope_net": 84751,
   "FreakConfig": 6476,
   "meli_proxyy": 33661,
-  "mtproxy_lists": 446768
+  "mtproxy_lists": 446770
 }
