@@ -14,7 +14,7 @@ SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 SESSION_NAME = 'my_telegram_session'
 
 TARGET_GROUPS = [
-    'letendorproxy', 'MuteVpnN', 'ShadowProxy66', 'free_vpn02', 'falcunargo', 'FreakConfig',
+    'letsproxys', 'MuteVpnN', 'ShadowProxy66', 'free_vpn02', 'falcunargo', 'FreakConfig',
     'DirectVPN', 'DailyV2RY', 'daily_configs', 'configpluse', 'ghalagyann', 'meli_proxyy',
     'ghalagyann2', 'Leecher56', 'tigervpnorg', 'v2rayng_fars', 'Mrsoulb', 'mtproxy_lists',
     'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'V2rayBaaz', 'vpnplusee_free', 
