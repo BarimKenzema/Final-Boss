@@ -21,9 +21,9 @@ TARGET_GROUPS = [
     'v2ray_official', 'horn_proxy', 'ocean_peace_mind', 'safavpnn', 'vless_config', 'AR14N24b', 
     'vpn_tehran', 'vpnz4', 'customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'entryNET',
     'vmess_ir', 'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 'sinavm', 'xpnteam', 
-    'v2rayroz', 'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast', 'V2All', 
+    'v2rayroz', 'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast', 'V2All', 'proxy_v2ray_meli',
     'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn', 'FG_Link', 'FreeNetAndProxy', 
-    'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net', 'zhicroid' 
+    'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net', 'zhicroid', 'saghi_proxy1' 
 ]
 
 # Databases and Active Files
