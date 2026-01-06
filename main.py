@@ -5,7 +5,7 @@ import requests
 import geoip2.database
 from dns import resolver
 
-print("--- Telegram Scraper v12.1 (Databases + Accumulating Active Files) START ---")
+print("--- Telegram Scraper v13.0 (Now with .txt file support!) START ---")
 
 # --- CONFIGURATION ---
 API_ID = os.environ.get('API_ID')
@@ -39,6 +39,10 @@ STATE_FILE = 'last_ids.json'
 NEW_NAME = '@VPNProxyTest'
 MAX_CONFIGS_PER_FILE = 444
 GEOIP_DB_PATH = 'GeoLite2-Country.mmdb'
+
+# Download settings
+TEMP_DOWNLOAD_FOLDER = './temp_downloads'
+MAX_FILE_SIZE_MB = 10  # Don't download files larger than 10MB
 
 COUNTRY_FLAGS = {
     "AD": "🇦🇩", "AE": "🇦🇪", "AF": "🇦🇫", "AG": "🇦🇬", "AI": "🇦🇮", "AL": "🇦🇱", "AM": "🇦🇲", "AO": "🇦🇴", "AQ": "🇦🇶", "AR": "🇦🇷", "AS": "🇦🇸", "AT": "🇦🇹", "AU": "🇦🇺", "AW": "🇦🇼", "AX": "🇦🇽", "AZ": "🇦🇿", "BA": "🇧🇦", "BB": "🇧🇧", "BD": "🇧🇩", "BE": "🇧🇪", "BF": "🇧🇫", "BG": "🇧🇬", "BH": "🇧🇭", "BI": "🇧🇮", "BJ": "🇧🇯", "BL": "🇧🇱", "BM": "🇧🇲", "BN": "🇧🇳", "BO": "🇧🇴", "BR": "🇧🇷", "BS": "🇧🇸", "BT": "🇧🇹", "BW": "🇧🇼", "BY": "🇧🇾", "BZ": "🇧🇿", "CA": "🇨🇦", "CC": "🇨🇨", "CD": "🇨🇩", "CF": "🇨🇫", "CG": "🇨🇬", "CH": "🇨🇭", "CI": "🇨🇮", "CK": "🇨🇰", "CL": "🇨🇱", "CM": "🇨🇲", "CN": "🇨🇳", "CO": "🇨🇴", "CR": "🇨🇷", "CU": "🇨🇺", "CV": "🇨🇻", "CW": "🇨🇼", "CX": "🇨🇽", "CY": "🇨🇾", "CZ": "🇨🇿", "DE": "🇩🇪", "DJ": "🇩🇯", "DK": "🇩🇰", "DM": "🇩🇲", "DO": "🇩🇴", "DZ": "🇩🇿", "EC": "🇪🇨", "EE": "🇪🇪", "EG": "🇪🇬", "EH": "🇪🇭", "ER": "🇪🇷", "ES": "🇪🇸", "ET": "🇪🇹", "FI": "🇫🇮", "FJ": "🇫🇯", "FK": "🇫🇰", "FM": "🇫🇲", "FO": "🇫🇴", "FR": "🇫🇷", "GA": "🇬🇦", "GB": "🇬🇧", "GD": "🇬🇩", "GE": "🇬🇪", "GF": "🇬🇫", "GG": "🇬🇬", "GH": "🇬🇭", "GI": "🇬🇮", "GL": "🇬🇱", "GM": "🇬🇲", "GN": "🇬🇳", "GP": "🇬🇵", "GQ": "🇬🇶", "GR": "🇬🇷", "GT": "🇬🇹", "GU": "🇬🇺", "GW": "🇬🇼", "GY": "🇬🇾", "HK": "🇭🇰", "HN": "🇭🇳", "HR": "🇭🇷", "HT": "🇭🇹", "HU": "🇭🇺", "ID": "🇮🇩", "IE": "🇮🇪", "IL": "🇮🇱", "IM": "🇮🇲", "IN": "🇮🇳", "IO": "🇮🇴", "IQ": "🇮🇶", "IR": "🇮🇷", "IS": "🇮🇸", "IT": "🇮🇹", "JE": "🇯🇪", "JM": "🇯🇲", "JO": "🇯🇴", "JP": "🇯🇵", "KE": "🇰🇪", "KG": "🇰🇬", "KH": "🇰🇭", "KI": "🇰🇮", "KM": "🇰🇲", "KN": "🇰🇳", "KP": "🇰🇵", "KR": "🇰🇷", "KW": "🇰🇼", "KY": "🇰🇾", "KZ": "🇰🇿", "LA": "🇱🇦", "LB": "🇱🇧", "LC": "🇱🇨", "LI": "🇱🇮", "LK": "🇱🇰", "LR": "🇱🇷", "LS": "🇱🇸", "LT": "🇱🇹", "LU": "🇱🇺", "LV": "🇱🇻", "LY": "🇱🇾", "MA": "🇲🇦", "MC": "🇲🇨", "MD": "🇲🇩", "ME": "🇲🇪", "MG": "🇲🇬", "MH": "🇲🇭", "MK": "🇲🇰", "ML": "🇲🇱", "MM": "🇲🇲", "MN": "🇲🇳", "MO": "🇲🇴", "MP": "🇲🇵", "MQ": "🇲🇶", "MR": "🇲🇷", "MS": "🇲🇸", "MT": "🇲🇹", "MU": "🇲🇺", "MV": "🇲🇻", "MW": "🇲🇼", "MX": "🇲🇽", "MY": "🇲🇾", "MZ": "🇲🇿", "NA": "🇳🇦", "NC": "🇳🇨", "NE": "🇳🇪", "NF": "🇳🇫", "NG": "🇳🇬", "NI": "🇳🇮", "NL": "🇳🇱", "NO": "🇳🇴", "NP": "🇳🇵", "NR": "🇳🇷", "NU": "🇳🇺", "NZ": "🇳🇿", "OM": "🇴🇲", "PA": "🇵🇦", "PE": "🇵🇪", "PF": "🇵🇫", "PG": "🇵🇬", "PH": "🇵🇭", "PK": "🇵🇰", "PL": "🇵🇱", "PM": "🇵🇲", "PR": "🇵🇷", "PS": "🇵🇸", "PT": "🇵🇹", "PW": "🇵🇼", "PY": "🇵🇾", "QA": "🇶🇦", "RE": "🇷🇪", "RO": "🇷🇴", "RS": "🇷🇸", "RU": "🇷🇺", "RW": "🇷🇼", "SA": "🇸🇦", "SB": "🇸🇧", "SC": "🇸🇨", "SD": "🇸🇩", "SE": "🇸🇪", "SG": "🇸🇬", "SH": "🇸🇭", "SI": "🇸🇮", "SK": "🇸🇰", "SL": "🇸🇱", "SM": "🇸🇲", "SN": "🇸🇳", "SO": "🇸🇴", "SR": "🇸🇷", "SS": "🇸🇸", "ST": "🇸🇹", "SV": "🇸🇻", "SX": "🇸🇽", "SY": "🇸🇾", "SZ": "🇸🇿", "TC": "🇹🇨", "TD": "🇹🇩", "TG": "🇹🇬", "TH": "🇹🇭", "TJ": "🇹🇯", "TK": "🇹🇰", "TL": "🇹🇱", "TM": "🇹🇲", "TN": "🇹🇳", "TO": "🇹🇴", "TR": "🇹🇷", "TT": "🇹🇹", "TV": "🇹🇻", "TW": "🇹🇼", "TZ": "🇹🇿", "UA": "🇺🇦", "UG": "🇺🇬", "US": "🇺🇸", "UY": "🇺🇾", "UZ": "🇺🇿", "VA": "🇻🇦", "VC": "🇻🇨", "VE": "🇻🇪", "VG": "🇻🇬", "VI": "🇻🇮", "VN": "🇻🇳", "VU": "🇻🇺", "WF": "🇼🇫", "WS": "🇼🇸", "YE": "🇾🇪", "YT": "🇾🇹", "ZA": "🇿🇦", "ZM": "🇿🇲", "ZW": "🇿🇼", "XX": "🔓"
@@ -354,9 +358,91 @@ def rename_config(link, name, country_code):
     new_name_with_flags = f"{flag} {name} {flag}"
     return f"{link.split('#')[0]}#{quote(new_name_with_flags)}"
 
+# =========================
+# NEW: File download & parsing
+# =========================
+async def process_txt_file(client, message):
+    """
+    Download and parse .txt file attachments from Telegram messages.
+    Returns list of configs found in the file.
+    """
+    configs_found = []
+    
+    if not message.document:
+        return configs_found
+    
+    # Check if it's a text file
+    filename = message.file.name or ""
+    mime_type = message.file.mime_type or ""
+    
+    is_txt_file = filename.lower().endswith('.txt') or mime_type == 'text/plain'
+    
+    if not is_txt_file:
+        return configs_found
+    
+    # Check file size
+    file_size_mb = message.file.size / (1024 * 1024)
+    if file_size_mb > MAX_FILE_SIZE_MB:
+        print(f"  ⚠️ Skipping large file: {filename} ({file_size_mb:.2f}MB)")
+        return configs_found
+    
+    # Download the file
+    try:
+        os.makedirs(TEMP_DOWNLOAD_FOLDER, exist_ok=True)
+        file_path = await client.download_media(message, file=TEMP_DOWNLOAD_FOLDER)
+        
+        if not file_path:
+            return configs_found
+        
+        print(f"  📄 Downloaded: {filename} ({file_size_mb:.2f}MB)")
+        
+        # Read file contents
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            # Try with different encoding
+            try:
+                with open(file_path, 'r', encoding='latin-1') as f:
+                    content = f.read()
+            except:
+                print(f"  ❌ Could not read file: {filename}")
+                content = ""
+        
+        # Check if content is base64 encoded
+        if content and re.match(r'^[A-Za-z0-9+/=\s]+$', content.strip()):
+            try:
+                # Try to decode as base64
+                decoded = base64.b64decode(content.strip()).decode('utf-8')
+                content = decoded
+                print(f"  ℹ️  Decoded base64 content")
+            except:
+                pass  # Not base64, use as-is
+        
+        # Find configs in file
+        configs_found = find_and_validate_configs(content)
+        
+        if configs_found:
+            print(f"  ✅ Found {len(configs_found)} configs in {filename}")
+        
+        # Clean up downloaded file
+        try:
+            os.remove(file_path)
+        except:
+            pass
+        
+    except Exception as e:
+        print(f"  ❌ Error processing file {filename}: {e}")
+    
+    return configs_found
+
 async def scrape_new_configs(client, groups, last_ids):
     scraped_configs = set()
     new_latest_ids = last_ids.copy()
+    
+    total_files_processed = 0
+    total_configs_from_files = 0
+    
     for group in groups:
         group_str = str(group)
         min_id = last_ids.get(group_str, 0)
@@ -364,14 +450,21 @@ async def scrape_new_configs(client, groups, last_ids):
         limit = 44 if is_new_group else None
         scan_type = f"last {limit}" if is_new_group else f"since ID > {min_id}"
         print(f"\n--- Scraping group: {group_str} ({scan_type}) ---")
+        
         messages = [msg async for msg in client.iter_messages(group, min_id=min_id, limit=limit)]
+        
         if messages:
             new_latest_ids[group_str] = messages[0].id
             print(f"Found {len(messages)} new message(s). New latest ID: {messages[0].id}")
+            
             for message in messages:
                 texts_to_scan = []
+                
+                # Scan message text
                 if message.text: 
                     texts_to_scan.append(message.text)
+                
+                # Scan replied message
                 if message.is_reply:
                     try:
                         replied = await message.get_reply_message()
@@ -379,10 +472,32 @@ async def scrape_new_configs(client, groups, last_ids):
                             texts_to_scan.append(replied.text)
                     except Exception: 
                         pass
+                
+                # NEW: Process .txt file attachments
+                if message.document:
+                    file_configs = await process_txt_file(client, message)
+                    if file_configs:
+                        scraped_configs.update(file_configs)
+                        total_files_processed += 1
+                        total_configs_from_files += len(file_configs)
+                
+                # Process text configs
                 for config in find_and_validate_configs("\n".join(texts_to_scan)):
                     scraped_configs.add(config)
         else:
             print("No new messages found.")
+    
+    # Clean up temp folder
+    try:
+        if os.path.exists(TEMP_DOWNLOAD_FOLDER):
+            import shutil
+            shutil.rmtree(TEMP_DOWNLOAD_FOLDER)
+    except:
+        pass
+    
+    if total_files_processed > 0:
+        print(f"\n📊 File Summary: Processed {total_files_processed} .txt files, found {total_configs_from_files} configs")
+    
     return scraped_configs, new_latest_ids
 
 # --- MAIN FUNCTION ---
