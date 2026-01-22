@@ -20,7 +20,7 @@ TARGET_GROUPS = [
     'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'V2rayBaaz', 'vpnplusee_free', 
     'v2ray_official', 'horn_proxy', 'ocean_peace_mind', 'safavpnn', 'vless_config', 'AR14N24b', 'anotherme_night',
     'vpn_tehran', 'vpnz4', 'customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'entryNET', 'OnlineForevers',
-    'vmess_ir', 'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 'sinavm', 'xpnteam', 
+    'vmess_ir', 'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 'sinavm', 'xpnteam', 'proxymthub', 
     'v2rayroz', 'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast', 'V2All', 'proxy_v2ray_meli',
     'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn', 'FG_Link', 'FreeNetAndProxy', 
     'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net', 'zhicroid', 'saghi_proxy1'
