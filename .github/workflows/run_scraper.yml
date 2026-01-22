@@ -1,3 +1,39 @@
+name: Scrape Telegram for V2Ray Configs
+
+on:
+  schedule:
+    # Runs every hour, on the hour.
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Wait randomly on scheduled runs (3 to 6 minutes)
+        # This step ONLY runs for scheduled jobs, NOT manual ones.
+        if: github.event_name == 'schedule'
+        run: sleep $((180 + RANDOM % 180))
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install telethon geoip2 dnspython
+
+      - name: Run Python Scraper
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
         run: python main.py
 
       - name: Commit and push changes
