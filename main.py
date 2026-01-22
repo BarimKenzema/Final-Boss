@@ -5,7 +5,7 @@ import requests
 import geoip2.database
 from dns import resolver
 
-print("--- Telegram Scraper v13.0 (Now with .txt file support!) START ---")
+print("--- Telegram Scraper v13.1 (Fixed regex + .txt files + New channels) START ---")
 
 # --- CONFIGURATION ---
 API_ID = os.environ.get('API_ID')
@@ -23,7 +23,7 @@ TARGET_GROUPS = [
     'vmess_ir', 'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 'sinavm', 'xpnteam', 
     'v2rayroz', 'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast', 'V2All', 'proxy_v2ray_meli',
     'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn', 'FG_Link', 'FreeNetAndProxy', 
-    'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net', 'zhicroid', 'saghi_proxy1' 
+    'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net', 'zhicroid', 'saghi_proxy1'
 ]
 
 # Databases and Active Files
@@ -42,7 +42,7 @@ GEOIP_DB_PATH = 'GeoLite2-Country.mmdb'
 
 # Download settings
 TEMP_DOWNLOAD_FOLDER = './temp_downloads'
-MAX_FILE_SIZE_MB = 10  # Don't download files larger than 10MB
+MAX_FILE_SIZE_MB = 10
 
 COUNTRY_FLAGS = {
     "AD": "🇦🇩", "AE": "🇦🇪", "AF": "🇦🇫", "AG": "🇦🇬", "AI": "🇦🇮", "AL": "🇦🇱", "AM": "🇦🇲", "AO": "🇦🇴", "AQ": "🇦🇶", "AR": "🇦🇷", "AS": "🇦🇸", "AT": "🇦🇹", "AU": "🇦🇺", "AW": "🇦🇼", "AX": "🇦🇽", "AZ": "🇦🇿", "BA": "🇧🇦", "BB": "🇧🇧", "BD": "🇧🇩", "BE": "🇧🇪", "BF": "🇧🇫", "BG": "🇧🇬", "BH": "🇧🇭", "BI": "🇧🇮", "BJ": "🇧🇯", "BL": "🇧🇱", "BM": "🇧🇲", "BN": "🇧🇳", "BO": "🇧🇴", "BR": "🇧🇷", "BS": "🇧🇸", "BT": "🇧🇹", "BW": "🇧🇼", "BY": "🇧🇾", "BZ": "🇧🇿", "CA": "🇨🇦", "CC": "🇨🇨", "CD": "🇨🇩", "CF": "🇨🇫", "CG": "🇨🇬", "CH": "🇨🇭", "CI": "🇨🇮", "CK": "🇨🇰", "CL": "🇨🇱", "CM": "🇨🇲", "CN": "🇨🇳", "CO": "🇨🇴", "CR": "🇨🇷", "CU": "🇨🇺", "CV": "🇨🇻", "CW": "🇨🇼", "CX": "🇨🇽", "CY": "🇨🇾", "CZ": "🇨🇿", "DE": "🇩🇪", "DJ": "🇩🇯", "DK": "🇩🇰", "DM": "🇩🇲", "DO": "🇩🇴", "DZ": "🇩🇿", "EC": "🇪🇨", "EE": "🇪🇪", "EG": "🇪🇬", "EH": "🇪🇭", "ER": "🇪🇷", "ES": "🇪🇸", "ET": "🇪🇹", "FI": "🇫🇮", "FJ": "🇫🇯", "FK": "🇫🇰", "FM": "🇫🇲", "FO": "🇫🇴", "FR": "🇫🇷", "GA": "🇬🇦", "GB": "🇬🇧", "GD": "🇬🇩", "GE": "🇬🇪", "GF": "🇬🇫", "GG": "🇬🇬", "GH": "🇬🇭", "GI": "🇬🇮", "GL": "🇬🇱", "GM": "🇬🇲", "GN": "🇬🇳", "GP": "🇬🇵", "GQ": "🇬🇶", "GR": "🇬🇷", "GT": "🇬🇹", "GU": "🇬🇺", "GW": "🇬🇼", "GY": "🇬🇾", "HK": "🇭🇰", "HN": "🇭🇳", "HR": "🇭🇷", "HT": "🇭🇹", "HU": "🇭🇺", "ID": "🇮🇩", "IE": "🇮🇪", "IL": "🇮🇱", "IM": "🇮🇲", "IN": "🇮🇳", "IO": "🇮🇴", "IQ": "🇮🇶", "IR": "🇮🇷", "IS": "🇮🇸", "IT": "🇮🇹", "JE": "🇯🇪", "JM": "🇯🇲", "JO": "🇯🇴", "JP": "🇯🇵", "KE": "🇰🇪", "KG": "🇰🇬", "KH": "🇰🇭", "KI": "🇰🇮", "KM": "🇰🇲", "KN": "🇰🇳", "KP": "🇰🇵", "KR": "🇰🇷", "KW": "🇰🇼", "KY": "🇰🇾", "KZ": "🇰🇿", "LA": "🇱🇦", "LB": "🇱🇧", "LC": "🇱🇨", "LI": "🇱🇮", "LK": "🇱🇰", "LR": "🇱🇷", "LS": "🇱🇸", "LT": "🇱🇹", "LU": "🇱🇺", "LV": "🇱🇻", "LY": "🇱🇾", "MA": "🇲🇦", "MC": "🇲🇨", "MD": "🇲🇩", "ME": "🇲🇪", "MG": "🇲🇬", "MH": "🇲🇭", "MK": "🇲🇰", "ML": "🇲🇱", "MM": "🇲🇲", "MN": "🇲🇳", "MO": "🇲🇴", "MP": "🇲🇵", "MQ": "🇲🇶", "MR": "🇲🇷", "MS": "🇲🇸", "MT": "🇲🇹", "MU": "🇲🇺", "MV": "🇲🇻", "MW": "🇲🇼", "MX": "🇲🇽", "MY": "🇲🇾", "MZ": "🇲🇿", "NA": "🇳🇦", "NC": "🇳🇨", "NE": "🇳🇪", "NF": "🇳🇫", "NG": "🇳🇬", "NI": "🇳🇮", "NL": "🇳🇱", "NO": "🇳🇴", "NP": "🇳🇵", "NR": "🇳🇷", "NU": "🇳🇺", "NZ": "🇳🇿", "OM": "🇴🇲", "PA": "🇵🇦", "PE": "🇵🇪", "PF": "🇵🇫", "PG": "🇵🇬", "PH": "🇵🇭", "PK": "🇵🇰", "PL": "🇵🇱", "PM": "🇵🇲", "PR": "🇵🇷", "PS": "🇵🇸", "PT": "🇵🇹", "PW": "🇵🇼", "PY": "🇵🇾", "QA": "🇶🇦", "RE": "🇷🇪", "RO": "🇷🇴", "RS": "🇷🇸", "RU": "🇷🇺", "RW": "🇷🇼", "SA": "🇸🇦", "SB": "🇸🇧", "SC": "🇸🇨", "SD": "🇸🇩", "SE": "🇸🇪", "SG": "🇸🇬", "SH": "🇸🇭", "SI": "🇸🇮", "SK": "🇸🇰", "SL": "🇸🇱", "SM": "🇸🇲", "SN": "🇸🇳", "SO": "🇸🇴", "SR": "🇸🇷", "SS": "🇸🇸", "ST": "🇸🇹", "SV": "🇸🇻", "SX": "🇸🇽", "SY": "🇸🇾", "SZ": "🇸🇿", "TC": "🇹🇨", "TD": "🇹🇩", "TG": "🇹🇬", "TH": "🇹🇭", "TJ": "🇹🇯", "TK": "🇹🇰", "TL": "🇹🇱", "TM": "🇹🇲", "TN": "🇹🇳", "TO": "🇹🇴", "TR": "🇹🇷", "TT": "🇹🇹", "TV": "🇹🇻", "TW": "🇹🇼", "TZ": "🇹🇿", "UA": "🇺🇦", "UG": "🇺🇬", "US": "🇺🇸", "UY": "🇺🇾", "UZ": "🇺🇿", "VA": "🇻🇦", "VC": "🇻🇨", "VE": "🇻🇪", "VG": "🇻🇬", "VI": "🇻🇮", "VN": "🇻🇳", "VU": "🇻🇺", "WF": "🇼🇫", "WS": "🇼🇸", "YE": "🇾🇪", "YT": "🇾🇹", "ZA": "🇿🇦", "ZM": "🇿🇲", "ZW": "🇿🇼", "XX": "🔓"
@@ -51,6 +51,9 @@ COUNTRY_FLAGS = {
 # --- Caching & Global Variables ---
 dns_cache = {}
 geoip_reader = None
+
+# Statistics
+stats_npvt_files_found = 0
 
 # =========================
 # Database helpers (base64)
@@ -134,10 +137,6 @@ def get_config_fingerprint(config_str):
         return None
 
 def merge_active_by_fingerprint(existing_list, new_list):
-    """
-    Append new_list after existing_list, then deduplicate by fingerprint,
-    keeping the LAST occurrence (so newer replaces older). Keep newest MAX_ACTIVE_CONFIGS.
-    """
     combined = existing_list + new_list
     seen = set()
     dedup_reversed = []
@@ -342,15 +341,32 @@ def get_config_attributes(config_str):
         return None
 
 def find_and_validate_configs(text):
+    """
+    FIXED: Removed word boundary, handles configs in quotation marks and Unicode text
+    """
+    global stats_npvt_files_found
+    
     if not text: 
         return []
-    pattern = r'\b(?:vless|vmess|trojan|ss)://[^\s<>"\'`]+'
+    
+    # Check for .npvt files (just warn, don't process)
+    if '.npvt' in text.lower():
+        stats_npvt_files_found += text.lower().count('.npvt')
+    
+    # FIXED PATTERN: Removed \b word boundary, more lenient
+    # Matches vless://, vmess://, trojan://, ss:// anywhere in text
+    pattern = r'(?:vless|vmess|trojan|ss)://[^\s<>"\'`\u201c\u201d\u2018\u2019]+'
+    
     valid_configs = []
-    for config in re.findall(pattern, text):
-        config = config.strip('.,;!?')
+    for config in re.findall(pattern, text, re.IGNORECASE):
+        # Clean up trailing punctuation
+        config = config.strip('.,;!?:')
+        
+        # Length validation
         if (config.startswith('ss://') and len(config) > 60) or \
            (config.startswith(('vless://', 'vmess://', 'trojan://')) and len(config) > 100):
             valid_configs.append(config)
+    
     return valid_configs
 
 def rename_config(link, name, country_code):
@@ -359,34 +375,35 @@ def rename_config(link, name, country_code):
     return f"{link.split('#')[0]}#{quote(new_name_with_flags)}"
 
 # =========================
-# NEW: File download & parsing
+# File download & parsing
 # =========================
 async def process_txt_file(client, message):
-    """
-    Download and parse .txt file attachments from Telegram messages.
-    Returns list of configs found in the file.
-    """
+    """Download and parse .txt file attachments"""
     configs_found = []
     
     if not message.document:
         return configs_found
     
-    # Check if it's a text file
     filename = message.file.name or ""
     mime_type = message.file.mime_type or ""
+    
+    # Check for .npvt files
+    if filename.lower().endswith('.npvt'):
+        print(f"  ⚠️ Skipping .npvt file (not supported): {filename}")
+        global stats_npvt_files_found
+        stats_npvt_files_found += 1
+        return configs_found
     
     is_txt_file = filename.lower().endswith('.txt') or mime_type == 'text/plain'
     
     if not is_txt_file:
         return configs_found
     
-    # Check file size
     file_size_mb = message.file.size / (1024 * 1024)
     if file_size_mb > MAX_FILE_SIZE_MB:
         print(f"  ⚠️ Skipping large file: {filename} ({file_size_mb:.2f}MB)")
         return configs_found
     
-    # Download the file
     try:
         os.makedirs(TEMP_DOWNLOAD_FOLDER, exist_ok=True)
         file_path = await client.download_media(message, file=TEMP_DOWNLOAD_FOLDER)
@@ -396,12 +413,10 @@ async def process_txt_file(client, message):
         
         print(f"  📄 Downloaded: {filename} ({file_size_mb:.2f}MB)")
         
-        # Read file contents
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
         except UnicodeDecodeError:
-            # Try with different encoding
             try:
                 with open(file_path, 'r', encoding='latin-1') as f:
                     content = f.read()
@@ -409,23 +424,20 @@ async def process_txt_file(client, message):
                 print(f"  ❌ Could not read file: {filename}")
                 content = ""
         
-        # Check if content is base64 encoded
+        # Check if base64 encoded
         if content and re.match(r'^[A-Za-z0-9+/=\s]+$', content.strip()):
             try:
-                # Try to decode as base64
                 decoded = base64.b64decode(content.strip()).decode('utf-8')
                 content = decoded
                 print(f"  ℹ️  Decoded base64 content")
             except:
-                pass  # Not base64, use as-is
+                pass
         
-        # Find configs in file
         configs_found = find_and_validate_configs(content)
         
         if configs_found:
             print(f"  ✅ Found {len(configs_found)} configs in {filename}")
         
-        # Clean up downloaded file
         try:
             os.remove(file_path)
         except:
@@ -460,11 +472,9 @@ async def scrape_new_configs(client, groups, last_ids):
             for message in messages:
                 texts_to_scan = []
                 
-                # Scan message text
                 if message.text: 
                     texts_to_scan.append(message.text)
                 
-                # Scan replied message
                 if message.is_reply:
                     try:
                         replied = await message.get_reply_message()
@@ -473,7 +483,7 @@ async def scrape_new_configs(client, groups, last_ids):
                     except Exception: 
                         pass
                 
-                # NEW: Process .txt file attachments
+                # Process .txt/.npvt file attachments
                 if message.document:
                     file_configs = await process_txt_file(client, message)
                     if file_configs:
@@ -497,6 +507,9 @@ async def scrape_new_configs(client, groups, last_ids):
     
     if total_files_processed > 0:
         print(f"\n📊 File Summary: Processed {total_files_processed} .txt files, found {total_configs_from_files} configs")
+    
+    if stats_npvt_files_found > 0:
+        print(f"ℹ️  Found {stats_npvt_files_found} .npvt file(s) (skipped - not supported)")
     
     return scraped_configs, new_latest_ids
 
@@ -569,9 +582,7 @@ async def main():
     db_sni = load_database(DATABASE_SNI)
     print(f"Loaded {len(db_sni)} historical SNI configs from database")
     
-    # Build SNI-based renamed list in order
     sni_configs_in_order = []
-    sni_new_set = set()
     for cfg in newly_scraped_configs:
         sni_cfg = replace_address_with_sni(cfg)
         attrs = get_config_attributes(sni_cfg)
@@ -580,7 +591,7 @@ async def main():
             sni_configs_in_order.append(renamed)
         else:
             sni_configs_in_order.append(sni_cfg)
-    # New vs DB
+    
     sni_new = [c for c in sni_configs_in_order if c not in db_sni]
     print(f"Found {len(sni_new)} NEW SNI configs")
     if sni_new:
@@ -602,7 +613,6 @@ async def main():
     db_ip = load_database(DATABASE_IP)
     print(f"Loaded {len(db_ip)} historical IP configs from database")
     
-    # IP processing with rename and stats
     new_configs_data = []
     seen_fingerprints = set()
     stats = {'total_scraped': len(newly_scraped_configs), 'failed_parse': 0, 'duplicates': 0, 'valid_unique': 0}
@@ -749,6 +759,8 @@ async def main():
     print(f"  Active IP (current)    : {len(load_list_from_file(ACTIVE_FILE_IP))}")
     print(f"  Categorized files      : {final_file_count} (444 limit)")
     print(f"  DNS cache entries      : {len(dns_cache)}")
+    if stats_npvt_files_found > 0:
+        print(f"  .npvt files found      : {stats_npvt_files_found} (skipped)")
     print(f"{'='*70}")
     
     if new_latest_ids:
