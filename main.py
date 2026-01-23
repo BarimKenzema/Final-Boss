@@ -1,12 +1,12 @@
-import re, base64, os, asyncio, json, socket, ipaddress
+import re, base64, os, asyncio, json, socket, ipaddress, random
 from urllib.parse import urlparse, parse_qs, quote, urlencode, urlunparse
 from telethon.sync import TelegramClient
-from telethon.tl.types import MessageEntityCode, MessageEntityPre
+from telethon.errors import FloodWaitError, ChannelPrivateError, UsernameInvalidError, UsernameNotOccupiedError
 import requests
 import geoip2.database
 from dns import resolver
 
-print("--- Telegram Scraper v14.0 (Fixed regex + .npvt support + entity extraction) START ---")
+print("--- Telegram Scraper v14.0 (Anti-Rate-Limit + FloodWait Protection) START ---")
 
 # --- CONFIGURATION ---
 API_ID = os.environ.get('API_ID')
@@ -26,6 +26,13 @@ TARGET_GROUPS = [
     'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn', 'FG_Link', 'FreeNetAndProxy', 
     'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net', 'zhicroid', 'saghi_proxy1'
 ]
+
+# Anti-rate-limit settings
+MIN_CHANNEL_DELAY = 3  # Minimum seconds between channels
+MAX_CHANNEL_DELAY = 8  # Maximum seconds between channels
+MAX_FLOOD_WAIT_TOLERATE = 300  # Skip channel if FloodWait > 5 minutes
+BATCH_SIZE = 10  # Process channels in batches with longer pauses
+BATCH_PAUSE = 15  # Seconds to pause between batches
 
 # Databases and Active Files
 DATABASE_SNI = 'database_sni.txt'
@@ -52,10 +59,7 @@ COUNTRY_FLAGS = {
 # --- Caching & Global Variables ---
 dns_cache = {}
 geoip_reader = None
-
-# Statistics
 stats_npvt_files_found = 0
-stats_npvt_configs_extracted = 0
 
 # =========================
 # Database helpers (base64)
@@ -330,7 +334,6 @@ def get_config_attributes(config_str):
         valid_protocols = ['vmess', 'vless', 'trojan', 'ss']
         if not protocol or protocol not in valid_protocols:
             return None
-        # FIXED: Added 'xhttp' and 'splithttp' to valid networks
         valid_networks = ['tcp', 'kcp', 'ws', 'http', 'quic', 'grpc', 'h2', 'httpupgrade', 'splithttp', 'xhttp']
         if not network or network not in valid_networks:
             network = 'tcp'
@@ -343,60 +346,36 @@ def get_config_attributes(config_str):
     except Exception:
         return None
 
-
-# =========================
-# FIXED: Improved config extraction
-# =========================
-
 def find_and_validate_configs(text):
-    """
-    FIXED v2: More robust regex pattern that handles:
-    - Configs inside quotation marks (including Persian/Arabic quotes)
-    - Configs with invisible Unicode characters
-    - Configs immediately after newlines without whitespace
-    - Code blocks from Telegram
-    """
     global stats_npvt_files_found
     
     if not text: 
         return []
     
-    # Check for .npvt files (just count, don't process here)
     if '.npvt' in text.lower():
         stats_npvt_files_found += text.lower().count('.npvt')
     
-    # FIXED PATTERN: More comprehensive
-    # 1. First, normalize the text - replace various quote types and invisible chars
     normalized_text = text
-    
-    # Replace various Unicode quotes with space
     quote_chars = ['"', '"', ''', ''', '«', '»', '‹', '›', '「', '」', '『', '』']
     for qc in quote_chars:
         normalized_text = normalized_text.replace(qc, ' ')
     
-    # Replace zero-width characters
     zw_chars = ['\u200b', '\u200c', '\u200d', '\u200e', '\u200f', '\ufeff']
     for zw in zw_chars:
         normalized_text = normalized_text.replace(zw, '')
     
-    # IMPROVED REGEX: Captures protocol URIs more aggressively
-    # Matches anything that looks like protocol:// followed by non-whitespace
     pattern = r'((?:vless|vmess|trojan|ss)://[^\s\u0600-\u06FF\u200b-\u200f\ufeff]+)'
-    
-    # Also try a simpler pattern as fallback
     simple_pattern = r'((?:vless|vmess|trojan|ss)://\S+)'
     
     valid_configs = []
     seen = set()
     
-    # Try main pattern first
     for config in re.findall(pattern, normalized_text, re.IGNORECASE):
         config = clean_config(config)
         if config and config not in seen and validate_config_length(config):
             valid_configs.append(config)
             seen.add(config)
     
-    # Also try on original text with simple pattern (to catch more edge cases)
     for config in re.findall(simple_pattern, text, re.IGNORECASE):
         config = clean_config(config)
         if config and config not in seen and validate_config_length(config):
@@ -405,403 +384,35 @@ def find_and_validate_configs(text):
     
     return valid_configs
 
-
 def clean_config(config):
-    """Clean up a config string by removing trailing garbage"""
     if not config:
         return None
-    
-    # Remove trailing punctuation and quotes
     config = config.strip()
-    
-    # Remove trailing characters that shouldn't be part of the config
     while config and config[-1] in '.,;!?:\'"`""''«»‹›':
         config = config[:-1]
-    
-    # Remove any trailing whitespace that might have been missed
     config = config.strip()
-    
     return config if config else None
 
-
 def validate_config_length(config):
-    """Validate config length - more lenient than before"""
     if not config:
         return False
-    
-    # FIXED: More lenient length checks
     if config.startswith('ss://'):
-        # SS configs can be shorter (min ~50 chars with encoded method:password@host:port)
         return len(config) > 40
     elif config.startswith('vmess://'):
-        # vmess needs enough for base64 encoded JSON
         return len(config) > 50
     elif config.startswith(('vless://', 'trojan://')):
-        # vless/trojan need UUID + host + port at minimum
         return len(config) > 60
-    
     return False
-
-
-def extract_text_from_message(message):
-    """
-    FIXED: Extract all text content from a Telegram message,
-    including text inside code blocks/entities
-    """
-    texts = []
-    
-    # Get raw text (includes everything)
-    if message.raw_text:
-        texts.append(message.raw_text)
-    
-    # Also get formatted text
-    if message.text and message.text != message.raw_text:
-        texts.append(message.text)
-    
-    # Extract text from code entities (mono text in Telegram)
-    if message.entities:
-        for entity in message.entities:
-            try:
-                # Check if it's a code block or pre block
-                if isinstance(entity, (MessageEntityCode, MessageEntityPre)):
-                    start = entity.offset
-                    end = entity.offset + entity.length
-                    code_text = message.raw_text[start:end] if message.raw_text else ""
-                    if code_text:
-                        texts.append(code_text)
-            except Exception:
-                pass
-    
-    return texts
-
-
-# =========================
-# NEW: .npvt JSON Parser
-# =========================
-
-def parse_npvt_json_to_uri(json_content):
-    """
-    Parse a .npvt JSON config and convert to URI format.
-    Returns a list of extracted config URIs.
-    """
-    global stats_npvt_configs_extracted
-    
-    configs = []
-    
-    # Try to find and parse JSON objects in the content
-    # Sometimes files contain multiple JSON objects or configs
-    
-    # First, try parsing as single JSON
-    try:
-        data = json.loads(json_content)
-        uri = convert_npvt_to_uri(data)
-        if uri:
-            configs.append(uri)
-            stats_npvt_configs_extracted += 1
-            return configs
-    except json.JSONDecodeError:
-        pass
-    
-    # Try to find JSON objects in the content (might have multiple)
-    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
-    for match in re.finditer(json_pattern, json_content, re.DOTALL):
-        try:
-            data = json.loads(match.group())
-            uri = convert_npvt_to_uri(data)
-            if uri:
-                configs.append(uri)
-                stats_npvt_configs_extracted += 1
-        except (json.JSONDecodeError, Exception):
-            continue
-    
-    return configs
-
-
-def convert_npvt_to_uri(data):
-    """Convert a parsed npvt JSON dict to a URI string"""
-    try:
-        # Find the proxy outbound
-        outbounds = data.get('outbounds', [])
-        proxy_outbound = None
-        
-        for ob in outbounds:
-            tag = ob.get('tag', '')
-            protocol = ob.get('protocol', '')
-            if tag == 'proxy' or protocol in ['vless', 'vmess', 'trojan', 'shadowsocks']:
-                proxy_outbound = ob
-                break
-        
-        if not proxy_outbound:
-            # Try first outbound if no proxy tag found
-            if outbounds and outbounds[0].get('protocol') in ['vless', 'vmess', 'trojan', 'shadowsocks']:
-                proxy_outbound = outbounds[0]
-            else:
-                return None
-        
-        protocol = proxy_outbound.get('protocol', '')
-        settings = proxy_outbound.get('settings', {})
-        stream_settings = proxy_outbound.get('streamSettings', {})
-        remark = data.get('remarks', '') or data.get('ps', '') or ''
-        
-        if protocol == 'vless':
-            return build_vless_uri(settings, stream_settings, remark)
-        elif protocol == 'vmess':
-            return build_vmess_uri(settings, stream_settings, remark)
-        elif protocol == 'trojan':
-            return build_trojan_uri(settings, stream_settings, remark)
-        elif protocol == 'shadowsocks':
-            return build_ss_uri(settings, remark)
-        
-        return None
-        
-    except Exception as e:
-        print(f"    Error converting npvt to URI: {e}")
-        return None
-
-
-def build_vless_uri(settings, stream_settings, remark):
-    """Build a VLESS URI from JSON settings"""
-    try:
-        vnext = settings.get('vnext', [{}])[0]
-        address = vnext.get('address', '')
-        port = vnext.get('port', '')
-        users = vnext.get('users', [{}])[0]
-        uuid = users.get('id', '')
-        
-        if not all([address, port, uuid]):
-            return None
-        
-        params = {}
-        
-        # Encryption
-        params['encryption'] = users.get('encryption', 'none')
-        
-        # Network type
-        network = stream_settings.get('network', 'tcp')
-        params['type'] = network
-        
-        # Security
-        security = stream_settings.get('security', 'none')
-        params['security'] = security
-        
-        # Network-specific settings
-        if network == 'xhttp' or network == 'splithttp':
-            xhttp_settings = stream_settings.get('xhttpSettings', stream_settings.get('splithttpSettings', {}))
-            if xhttp_settings.get('path'):
-                params['path'] = xhttp_settings['path']
-            if xhttp_settings.get('host'):
-                params['host'] = xhttp_settings['host']
-            if xhttp_settings.get('mode'):
-                params['mode'] = xhttp_settings['mode']
-                
-        elif network == 'ws':
-            ws_settings = stream_settings.get('wsSettings', {})
-            if ws_settings.get('path'):
-                params['path'] = ws_settings['path']
-            headers = ws_settings.get('headers', {})
-            if headers.get('Host'):
-                params['host'] = headers['Host']
-                
-        elif network == 'grpc':
-            grpc_settings = stream_settings.get('grpcSettings', {})
-            if grpc_settings.get('serviceName'):
-                params['serviceName'] = grpc_settings['serviceName']
-            if grpc_settings.get('mode'):
-                params['mode'] = grpc_settings['mode']
-                
-        elif network == 'tcp':
-            tcp_settings = stream_settings.get('tcpSettings', {})
-            header = tcp_settings.get('header', {})
-            if header.get('type') == 'http':
-                params['headerType'] = 'http'
-                request = header.get('request', {})
-                if request.get('path'):
-                    path_list = request['path']
-                    params['path'] = path_list[0] if isinstance(path_list, list) else path_list
-                if request.get('headers', {}).get('Host'):
-                    hosts = request['headers']['Host']
-                    params['host'] = hosts[0] if isinstance(hosts, list) else hosts
-            else:
-                params['headerType'] = 'none'
-        
-        elif network == 'http' or network == 'h2':
-            http_settings = stream_settings.get('httpSettings', stream_settings.get('h2Settings', {}))
-            if http_settings.get('path'):
-                params['path'] = http_settings['path']
-            if http_settings.get('host'):
-                hosts = http_settings['host']
-                params['host'] = hosts[0] if isinstance(hosts, list) else hosts
-        
-        # Reality settings
-        if security == 'reality':
-            reality_settings = stream_settings.get('realitySettings', {})
-            if reality_settings.get('serverName'):
-                params['sni'] = reality_settings['serverName']
-            if reality_settings.get('publicKey'):
-                params['pbk'] = reality_settings['publicKey']
-            if reality_settings.get('shortId'):
-                params['sid'] = reality_settings['shortId']
-            if reality_settings.get('fingerprint'):
-                params['fp'] = reality_settings['fingerprint']
-            if reality_settings.get('spiderX'):
-                params['spx'] = reality_settings['spiderX']
-                
-        elif security == 'tls':
-            tls_settings = stream_settings.get('tlsSettings', {})
-            if tls_settings.get('serverName'):
-                params['sni'] = tls_settings['serverName']
-            if tls_settings.get('fingerprint'):
-                params['fp'] = tls_settings['fingerprint']
-            if tls_settings.get('alpn'):
-                alpn = tls_settings['alpn']
-                params['alpn'] = ','.join(alpn) if isinstance(alpn, list) else alpn
-        
-        # Build URI
-        query = urlencode(params)
-        uri = f"vless://{uuid}@{address}:{port}?{query}#{quote(remark)}"
-        return uri
-        
-    except Exception as e:
-        return None
-
-
-def build_vmess_uri(settings, stream_settings, remark):
-    """Build a VMess URI from JSON settings"""
-    try:
-        vnext = settings.get('vnext', [{}])[0]
-        address = vnext.get('address', '')
-        port = vnext.get('port', '')
-        users = vnext.get('users', [{}])[0]
-        uuid = users.get('id', '')
-        alter_id = users.get('alterId', 0)
-        
-        if not all([address, port, uuid]):
-            return None
-        
-        # Build vmess JSON object
-        vmess_obj = {
-            'v': '2',
-            'ps': remark,
-            'add': address,
-            'port': str(port),
-            'id': uuid,
-            'aid': str(alter_id),
-            'scy': users.get('security', 'auto'),
-            'net': stream_settings.get('network', 'tcp'),
-            'type': 'none',
-            'host': '',
-            'path': '',
-            'tls': stream_settings.get('security', ''),
-            'sni': ''
-        }
-        
-        network = stream_settings.get('network', 'tcp')
-        
-        if network == 'ws':
-            ws_settings = stream_settings.get('wsSettings', {})
-            vmess_obj['path'] = ws_settings.get('path', '')
-            vmess_obj['host'] = ws_settings.get('headers', {}).get('Host', '')
-            
-        elif network == 'grpc':
-            grpc_settings = stream_settings.get('grpcSettings', {})
-            vmess_obj['path'] = grpc_settings.get('serviceName', '')
-            vmess_obj['type'] = 'gun'
-            
-        elif network == 'tcp':
-            tcp_settings = stream_settings.get('tcpSettings', {})
-            header = tcp_settings.get('header', {})
-            if header.get('type') == 'http':
-                vmess_obj['type'] = 'http'
-                request = header.get('request', {})
-                if request.get('headers', {}).get('Host'):
-                    hosts = request['headers']['Host']
-                    vmess_obj['host'] = hosts[0] if isinstance(hosts, list) else hosts
-        
-        # TLS settings
-        if stream_settings.get('security') == 'tls':
-            tls_settings = stream_settings.get('tlsSettings', {})
-            vmess_obj['sni'] = tls_settings.get('serverName', '')
-        
-        vmess_json = json.dumps(vmess_obj, separators=(',', ':'))
-        encoded = base64.b64encode(vmess_json.encode('utf-8')).decode('utf-8')
-        return f"vmess://{encoded}"
-        
-    except Exception:
-        return None
-
-
-def build_trojan_uri(settings, stream_settings, remark):
-    """Build a Trojan URI from JSON settings"""
-    try:
-        servers = settings.get('servers', [{}])[0]
-        address = servers.get('address', '')
-        port = servers.get('port', '')
-        password = servers.get('password', '')
-        
-        if not all([address, port, password]):
-            return None
-        
-        params = {}
-        params['type'] = stream_settings.get('network', 'tcp')
-        params['security'] = stream_settings.get('security', 'tls')
-        
-        if params['security'] == 'tls':
-            tls_settings = stream_settings.get('tlsSettings', {})
-            if tls_settings.get('serverName'):
-                params['sni'] = tls_settings['serverName']
-        elif params['security'] == 'reality':
-            reality_settings = stream_settings.get('realitySettings', {})
-            if reality_settings.get('serverName'):
-                params['sni'] = reality_settings['serverName']
-            if reality_settings.get('publicKey'):
-                params['pbk'] = reality_settings['publicKey']
-            if reality_settings.get('shortId'):
-                params['sid'] = reality_settings['shortId']
-            if reality_settings.get('fingerprint'):
-                params['fp'] = reality_settings['fingerprint']
-        
-        query = urlencode(params)
-        uri = f"trojan://{password}@{address}:{port}?{query}#{quote(remark)}"
-        return uri
-        
-    except Exception:
-        return None
-
-
-def build_ss_uri(settings, remark):
-    """Build a Shadowsocks URI from JSON settings"""
-    try:
-        servers = settings.get('servers', [{}])[0]
-        address = servers.get('address', '')
-        port = servers.get('port', '')
-        password = servers.get('password', '')
-        method = servers.get('method', 'chacha20-ietf-poly1305')
-        
-        if not all([address, port, password, method]):
-            return None
-        
-        # Encode method:password in base64
-        user_info = f"{method}:{password}"
-        encoded_user = base64.b64encode(user_info.encode('utf-8')).decode('utf-8')
-        
-        uri = f"ss://{encoded_user}@{address}:{port}#{quote(remark)}"
-        return uri
-        
-    except Exception:
-        return None
-
 
 def rename_config(link, name, country_code):
     flag = country_code_to_flag(country_code)
     new_name_with_flags = f"{flag} {name} {flag}"
     return f"{link.split('#')[0]}#{quote(new_name_with_flags)}"
 
-
 # =========================
 # File download & parsing
 # =========================
-async def process_file_attachment(client, message):
-    """Download and parse file attachments (.txt and .npvt)"""
+async def process_txt_file(client, message):
     configs_found = []
     
     if not message.document:
@@ -810,10 +421,15 @@ async def process_file_attachment(client, message):
     filename = message.file.name or ""
     mime_type = message.file.mime_type or ""
     
-    is_txt_file = filename.lower().endswith('.txt') or mime_type == 'text/plain'
-    is_npvt_file = filename.lower().endswith('.npvt')
+    if filename.lower().endswith('.npvt'):
+        print(f"  ⚠️ Skipping .npvt file (not supported): {filename}")
+        global stats_npvt_files_found
+        stats_npvt_files_found += 1
+        return configs_found
     
-    if not (is_txt_file or is_npvt_file):
+    is_txt_file = filename.lower().endswith('.txt') or mime_type == 'text/plain'
+    
+    if not is_txt_file:
         return configs_found
     
     file_size_mb = message.file.size / (1024 * 1024)
@@ -830,8 +446,6 @@ async def process_file_attachment(client, message):
         
         print(f"  📄 Downloaded: {filename} ({file_size_mb:.2f}MB)")
         
-        # Read file content
-        content = ""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -841,43 +455,20 @@ async def process_file_attachment(client, message):
                     content = f.read()
             except:
                 print(f"  ❌ Could not read file: {filename}")
+                content = ""
         
-        if not content:
+        if content and re.match(r'^[A-Za-z0-9+/=\s]+$', content.strip()):
             try:
-                os.remove(file_path)
+                decoded = base64.b64decode(content.strip()).decode('utf-8')
+                content = decoded
+                print(f"  ℹ️  Decoded base64 content")
             except:
                 pass
-            return configs_found
         
-        # Handle .npvt files (JSON format)
-        if is_npvt_file:
-            npvt_configs = parse_npvt_json_to_uri(content)
-            if npvt_configs:
-                print(f"  ✅ Extracted {len(npvt_configs)} configs from .npvt file")
-                configs_found.extend(npvt_configs)
+        configs_found = find_and_validate_configs(content)
         
-        # Handle .txt files
-        else:
-            # Check if base64 encoded
-            if content and re.match(r'^[A-Za-z0-9+/=\s]+$', content.strip()):
-                try:
-                    decoded = base64.b64decode(content.strip()).decode('utf-8')
-                    content = decoded
-                    print(f"  ℹ️  Decoded base64 content")
-                except:
-                    pass
-            
-            # Find URI configs
-            uri_configs = find_and_validate_configs(content)
-            if uri_configs:
-                print(f"  ✅ Found {len(uri_configs)} URI configs in {filename}")
-                configs_found.extend(uri_configs)
-            
-            # Also try to find JSON configs in .txt files
-            json_configs = parse_npvt_json_to_uri(content)
-            if json_configs:
-                print(f"  ✅ Found {len(json_configs)} JSON configs in {filename}")
-                configs_found.extend(json_configs)
+        if configs_found:
+            print(f"  ✅ Found {len(configs_found)} configs in {filename}")
         
         try:
             os.remove(file_path)
@@ -889,59 +480,105 @@ async def process_file_attachment(client, message):
     
     return configs_found
 
-
 async def scrape_new_configs(client, groups, last_ids):
     scraped_configs = set()
     new_latest_ids = last_ids.copy()
     
     total_files_processed = 0
     total_configs_from_files = 0
+    channels_skipped = 0
+    channels_succeeded = 0
     
-    for group in groups:
+    # Randomize order to vary pattern
+    shuffled_groups = list(groups)
+    random.shuffle(shuffled_groups)
+    
+    for idx, group in enumerate(shuffled_groups, 1):
         group_str = str(group)
         min_id = last_ids.get(group_str, 0)
         is_new_group = min_id == 0
         limit = 44 if is_new_group else None
         scan_type = f"last {limit}" if is_new_group else f"since ID > {min_id}"
-        print(f"\n--- Scraping group: {group_str} ({scan_type}) ---")
+        print(f"\n--- Scraping group {idx}/{len(shuffled_groups)}: {group_str} ({scan_type}) ---")
         
-        try:
-            messages = [msg async for msg in client.iter_messages(group, min_id=min_id, limit=limit)]
-        except Exception as e:
-            print(f"Error scraping {group_str}: {e}")
+        # ANTI-RATE-LIMIT: Random delay between channels
+        if idx > 1:
+            delay = random.uniform(MIN_CHANNEL_DELAY, MAX_CHANNEL_DELAY)
+            print(f"  ⏱️  Waiting {delay:.1f}s before next channel...")
+            await asyncio.sleep(delay)
+        
+        # ANTI-RATE-LIMIT: Batch pause
+        if idx % BATCH_SIZE == 0:
+            print(f"  ⏸️  Batch {idx//BATCH_SIZE} complete. Pausing {BATCH_PAUSE}s...")
+            await asyncio.sleep(BATCH_PAUSE)
+        
+        # FloodWait handling with retries
+        messages = []
+        max_retries = 2
+        
+        for attempt in range(max_retries):
+            try:
+                messages = [msg async for msg in client.iter_messages(group, min_id=min_id, limit=limit)]
+                channels_succeeded += 1
+                break  # Success!
+                
+            except FloodWaitError as e:
+                wait_time = e.seconds
+                print(f"  ⚠️  FloodWait: {wait_time}s required for {group_str}")
+                
+                if wait_time > MAX_FLOOD_WAIT_TOLERATE:
+                    print(f"  ❌ Skipping {group_str} (wait too long: {wait_time/60:.1f} min)")
+                    channels_skipped += 1
+                    break
+                else:
+                    print(f"  ⏳ Waiting {wait_time}s + 5s buffer...")
+                    await asyncio.sleep(wait_time + 5)
+                    
+            except (ChannelPrivateError, UsernameInvalidError, UsernameNotOccupiedError) as e:
+                print(f"  ❌ Channel access error for {group_str}: {type(e).__name__}")
+                channels_skipped += 1
+                break
+                
+            except Exception as e:
+                print(f"  ❌ Error scraping {group_str}: {e}")
+                if attempt < max_retries - 1:
+                    print(f"  🔄 Retrying in 10s...")
+                    await asyncio.sleep(10)
+                else:
+                    channels_skipped += 1
+                break
+        
+        if not messages:
             continue
         
-        if messages:
-            new_latest_ids[group_str] = messages[0].id
-            print(f"Found {len(messages)} new message(s). New latest ID: {messages[0].id}")
+        new_latest_ids[group_str] = messages[0].id
+        print(f"Found {len(messages)} new message(s). New latest ID: {messages[0].id}")
+        
+        for message in messages:
+            texts_to_scan = []
             
-            for message in messages:
-                # FIXED: Extract all text including from code blocks
-                texts_to_scan = extract_text_from_message(message)
-                
-                # Also check replied messages
-                if message.is_reply:
-                    try:
-                        replied = await message.get_reply_message()
-                        if replied:
-                            texts_to_scan.extend(extract_text_from_message(replied))
-                    except Exception: 
-                        pass
-                
-                # Process file attachments (both .txt and .npvt)
-                if message.document:
-                    file_configs = await process_file_attachment(client, message)
-                    if file_configs:
-                        scraped_configs.update(file_configs)
-                        total_files_processed += 1
-                        total_configs_from_files += len(file_configs)
-                
-                # Process text configs
-                for text in texts_to_scan:
-                    for config in find_and_validate_configs(text):
-                        scraped_configs.add(config)
-        else:
-            print("No new messages found.")
+            if message.text: 
+                texts_to_scan.append(message.text)
+            
+            if message.is_reply:
+                try:
+                    replied = await message.get_reply_message()
+                    if replied and replied.text: 
+                        texts_to_scan.append(replied.text)
+                except Exception: 
+                    pass
+            
+            # Process .txt file attachments
+            if message.document:
+                file_configs = await process_txt_file(client, message)
+                if file_configs:
+                    scraped_configs.update(file_configs)
+                    total_files_processed += 1
+                    total_configs_from_files += len(file_configs)
+            
+            # Process text configs
+            for config in find_and_validate_configs("\n".join(texts_to_scan)):
+                scraped_configs.add(config)
     
     # Clean up temp folder
     try:
@@ -951,14 +588,19 @@ async def scrape_new_configs(client, groups, last_ids):
     except:
         pass
     
-    if total_files_processed > 0:
-        print(f"\n📊 File Summary: Processed {total_files_processed} files, found {total_configs_from_files} configs")
-    
-    if stats_npvt_configs_extracted > 0:
-        print(f"✅ Extracted {stats_npvt_configs_extracted} configs from .npvt files!")
+    print(f"\n{'='*70}")
+    print(f"  SCRAPING SUMMARY")
+    print(f"{'='*70}")
+    print(f"  Channels succeeded : {channels_succeeded}")
+    print(f"  Channels skipped   : {channels_skipped}")
+    print(f"  Files processed    : {total_files_processed}")
+    print(f"  Configs from files : {total_configs_from_files}")
+    print(f"  Total configs      : {len(scraped_configs)}")
+    if stats_npvt_files_found > 0:
+        print(f"  .npvt files found  : {stats_npvt_files_found} (skipped)")
+    print(f"{'='*70}")
     
     return scraped_configs, new_latest_ids
-
 
 # --- MAIN FUNCTION ---
 async def main():
@@ -1015,6 +657,10 @@ async def main():
             return
         print("Successfully connected to Telegram.")
         newly_scraped_configs, new_latest_ids = await scrape_new_configs(client, TARGET_GROUPS, last_ids)
+    except Exception as e:
+        print(f"FATAL ERROR during scraping: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         await client.disconnect()
         print("Disconnected from Telegram.")
@@ -1206,8 +852,6 @@ async def main():
     print(f"  Active IP (current)    : {len(load_list_from_file(ACTIVE_FILE_IP))}")
     print(f"  Categorized files      : {final_file_count} (444 limit)")
     print(f"  DNS cache entries      : {len(dns_cache)}")
-    if stats_npvt_configs_extracted > 0:
-        print(f"  .npvt configs extracted: {stats_npvt_configs_extracted}")
     print(f"{'='*70}")
     
     if new_latest_ids:
