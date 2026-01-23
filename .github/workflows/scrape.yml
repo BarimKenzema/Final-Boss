@@ -1,0 +1,6 @@
+name: Scrape Telegram for V2Ray Configs
+
+on:
+  schedule:
+    # Runs every hour, on the hour.
+    - cron: '0 *
