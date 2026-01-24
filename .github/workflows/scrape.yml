@@ -2,5 +2,55 @@ name: Scrape Telegram for V2Ray Configs
 
 on:
   schedule:
-    # Runs every hour, on the hour.
-    - cron: '0 *
+    # Reduced to every 3 hours (8 runs/day instead of 24) to avoid rate limits
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 45  # Added timeout to prevent hanging
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone for speed
+
+      - name: Wait randomly on scheduled runs (2 to 5 minutes)
+        if: github.event_name == 'schedule'
+        run: sleep $((120 + RANDOM % 180))
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'  # Cache pip dependencies
+
+      - name: Install Dependencies
+        run: pip install telethon geoip2 dnspython requests
+
+      - name: Run Python Scraper
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+        run: python main.py
+        continue-on-error: true  # Don't fail entire workflow on FloodWait
+
+      - name: Pull latest changes before commit
+        run: |
+          git config pull.rebase true
+          git pull origin main || echo "Already up to date"
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "✅ Automated Telegram Config & Category Update"
+          file_pattern: .
+          pull_options: '--rebase --autostash'
+          push_options: '--force-with-lease'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
