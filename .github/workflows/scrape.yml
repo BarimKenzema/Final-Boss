@@ -2,32 +2,37 @@ name: Scrape Telegram for V2Ray Configs
 
 on:
   schedule:
-    # Reduced to every 3 hours (8 runs/day instead of 24) to avoid rate limits
-    - cron: '0 */3 * * *'
+    - cron: '0 */4 * * *'
   workflow_dispatch:
+
+# CRITICAL: Prevent concurrent runs that cause AuthKeyDuplicatedError
+concurrency:
+  group: telegram-scraper
+  cancel-in-progress: false  # Wait for existing run to complete
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    timeout-minutes: 45  # Added timeout to prevent hanging
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1  # Shallow clone for speed
+          fetch-depth: 1
 
-      - name: Wait randomly on scheduled runs (2 to 5 minutes)
+      # Longer random delay to further prevent overlap
+      - name: Wait randomly on scheduled runs (3 to 8 minutes)
         if: github.event_name == 'schedule'
-        run: sleep $((120 + RANDOM % 180))
+        run: sleep $((180 + RANDOM % 300))
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'  # Cache pip dependencies
+          cache: 'pip'
 
       - name: Install Dependencies
         run: pip install telethon geoip2 dnspython requests
@@ -38,7 +43,7 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
         run: python main.py
-        continue-on-error: true  # Don't fail entire workflow on FloodWait
+        continue-on-error: true
 
       - name: Pull latest changes before commit
         run: |
