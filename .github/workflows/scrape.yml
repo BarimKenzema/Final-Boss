@@ -2,13 +2,13 @@ name: Scrape Telegram for V2Ray Configs
 
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    - cron: '0 */3 * * *'
   workflow_dispatch:
 
-# CRITICAL: Prevent concurrent runs that cause AuthKeyDuplicatedError
+# CRITICAL: Prevents concurrent runs that cause AuthKeyDuplicatedError
 concurrency:
   group: telegram-scraper
-  cancel-in-progress: false  # Wait for existing run to complete
+  cancel-in-progress: false
 
 jobs:
   scrape:
@@ -23,7 +23,6 @@ jobs:
         with:
           fetch-depth: 1
 
-      # Longer random delay to further prevent overlap
       - name: Wait randomly on scheduled runs (3 to 8 minutes)
         if: github.event_name == 'schedule'
         run: sleep $((180 + RANDOM % 300))
@@ -55,7 +54,6 @@ jobs:
         with:
           commit_message: "✅ Automated Telegram Config & Category Update"
           file_pattern: .
-          pull_options: '--rebase --autostash'
           push_options: '--force-with-lease'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
