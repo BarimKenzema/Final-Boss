@@ -497,7 +497,7 @@ async def scrape_new_configs(client, groups, last_ids):
         group_str = str(group)
         min_id = last_ids.get(group_str, 0)
         is_new_group = min_id == 0
-        limit = 44 if is_new_group else None
+        limit = 11 if is_new_group else None
         scan_type = f"last {limit}" if is_new_group else f"since ID > {min_id}"
         print(f"\n--- Scraping group {idx}/{len(shuffled_groups)}: {group_str} ({scan_type}) ---")
         
