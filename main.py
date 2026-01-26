@@ -1,6 +1,7 @@
 import re, base64, os, asyncio, json, socket, ipaddress, random
 from urllib.parse import urlparse, parse_qs, quote, urlencode, urlunparse
-from telethon.sync import TelegramClient
+from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError, ChannelPrivateError, UsernameInvalidError, UsernameNotOccupiedError
 import requests
 import geoip2.database
@@ -12,15 +13,14 @@ print("--- Telegram Scraper v14.0 (Anti-Rate-Limit + FloodWait Protection) START
 API_ID = os.environ.get('API_ID')
 API_HASH = os.environ.get('API_HASH')
 SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
-SESSION_NAME = 'my_telegram_session'
 
 TARGET_GROUPS = [
     'letsproxys', 'MuteVpnN', 'ShadowProxy66', 'free_vpn02', 'falcunargo', 'FreakConfig', 'tazaxy', 'frekansmeli', 
     'DirectVPN', 'DailyV2RY', 'daily_configs', 'configpluse', 'ghalagyann', 'meli_proxyy', 'fixeror', 'FergalVpnMod', 
-    'ghalagyann2', 'Leecher56', 'tigervpnorg', 'v2rayng_fars', 'Mrsoulb', 'mtproxy_lists', 'shankamil', 'prrofile_purple' 
-    'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'V2rayBaaz', 'vpnplusee_free', 'proxymtprotoir', 
+    'ghalagyann2', 'Leecher56', 'tigervpnorg', 'v2rayng_fars', 'Mrsoulb', 'mtproxy_lists', 'shankamil', 'prrofile_purple',
+    'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'V2rayBaaz', 'proxymtprotoir', 
     'v2ray_official', 'horn_proxy', 'ocean_peace_mind', 'safavpnn', 'vless_config', 'AR14N24b', 'anotherme_night', 'knightshield', 
-    'vpn_tehran', 'vpnz4', 'customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'entryNET', 'OnlineForevers', 'anotherme_night', 
+    'vpn_tehran', 'vpnz4', 'customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'entryNET', 'OnlineForevers',
     'vmess_ir', 'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 'sinavm', 'xpnteam', 'proxymthub', 
     'v2rayroz', 'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast', 'V2All', 'proxy_v2ray_meli',
     'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn', 'FG_Link', 'FreeNetAndProxy', 
@@ -28,11 +28,11 @@ TARGET_GROUPS = [
 ]
 
 # Anti-rate-limit settings
-MIN_CHANNEL_DELAY = 3  # Minimum seconds between channels
-MAX_CHANNEL_DELAY = 8  # Maximum seconds between channels
-MAX_FLOOD_WAIT_TOLERATE = 300  # Skip channel if FloodWait > 5 minutes
-BATCH_SIZE = 10  # Process channels in batches with longer pauses
-BATCH_PAUSE = 15  # Seconds to pause between batches
+MIN_CHANNEL_DELAY = 3
+MAX_CHANNEL_DELAY = 8
+MAX_FLOOD_WAIT_TOLERATE = 300
+BATCH_SIZE = 10
+BATCH_PAUSE = 15
 
 # Databases and Active Files
 DATABASE_SNI = 'database_sni.txt'
@@ -489,7 +489,6 @@ async def scrape_new_configs(client, groups, last_ids):
     channels_skipped = 0
     channels_succeeded = 0
     
-    # Randomize order to vary pattern
     shuffled_groups = list(groups)
     random.shuffle(shuffled_groups)
     
@@ -501,18 +500,15 @@ async def scrape_new_configs(client, groups, last_ids):
         scan_type = f"last {limit}" if is_new_group else f"since ID > {min_id}"
         print(f"\n--- Scraping group {idx}/{len(shuffled_groups)}: {group_str} ({scan_type}) ---")
         
-        # ANTI-RATE-LIMIT: Random delay between channels
         if idx > 1:
             delay = random.uniform(MIN_CHANNEL_DELAY, MAX_CHANNEL_DELAY)
             print(f"  ⏱️  Waiting {delay:.1f}s before next channel...")
             await asyncio.sleep(delay)
         
-        # ANTI-RATE-LIMIT: Batch pause
         if idx % BATCH_SIZE == 0:
             print(f"  ⏸️  Batch {idx//BATCH_SIZE} complete. Pausing {BATCH_PAUSE}s...")
             await asyncio.sleep(BATCH_PAUSE)
         
-        # FloodWait handling with retries
         messages = []
         max_retries = 2
         
@@ -520,7 +516,7 @@ async def scrape_new_configs(client, groups, last_ids):
             try:
                 messages = [msg async for msg in client.iter_messages(group, min_id=min_id, limit=limit)]
                 channels_succeeded += 1
-                break  # Success!
+                break
                 
             except FloodWaitError as e:
                 wait_time = e.seconds
@@ -568,7 +564,6 @@ async def scrape_new_configs(client, groups, last_ids):
                 except Exception: 
                     pass
             
-            # Process .txt file attachments
             if message.document:
                 file_configs = await process_txt_file(client, message)
                 if file_configs:
@@ -576,11 +571,9 @@ async def scrape_new_configs(client, groups, last_ids):
                     total_files_processed += 1
                     total_configs_from_files += len(file_configs)
             
-            # Process text configs
             for config in find_and_validate_configs("\n".join(texts_to_scan)):
                 scraped_configs.add(config)
     
-    # Clean up temp folder
     try:
         if os.path.exists(TEMP_DOWNLOAD_FOLDER):
             import shutil
@@ -634,19 +627,13 @@ async def main():
     except Exception as e: 
         print(f"Warning: Could not load GeoIP: {e}")
 
-    try:
-        with open(f"{SESSION_NAME}.session", 'wb') as f: 
-            f.write(base64.b64decode(SESSION_STRING))
-    except Exception as e: 
-        print(f"FATAL: Could not write session file: {e}")
-        return
-    
     last_ids = {}
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, 'r') as f: 
             last_ids = json.load(f)
-        
-    client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
+    
+    # ===== FIXED: Use StringSession directly (no file writing) =====
+    client = TelegramClient(StringSession(SESSION_STRING), int(API_ID), API_HASH)
     newly_scraped_configs = set()
     new_latest_ids = {}
     
