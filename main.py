@@ -18,21 +18,21 @@ TARGET_GROUPS = [
     'letsproxys', 'MuteVpnN', 'ShadowProxy66', 'free_vpn02', 'falcunargo', 'FreakConfig', 'tazaxy', 'frekansmeli', 
     'DirectVPN', 'DailyV2RY', 'daily_configs', 'configpluse', 'ghalagyann', 'meli_proxyy', 'fixeror', 'FergalVpnMod', 
     'ghalagyann2', 'Leecher56', 'tigervpnorg', 'v2rayng_fars', 'Mrsoulb', 'mtproxy_lists', 'shankamil', 'prrofile_purple',
-    'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'V2rayBaaz', 'proxymtprotoir', 'V2RAY_SPATIAL', 
+    'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'V2rayBaaz', 'proxymtprotoir', 
     'v2ray_official', 'horn_proxy', 'ocean_peace_mind', 'safavpnn', 'vless_config', 'AR14N24b', 'anotherme_night', 'knightshield', 
-    'vpn_tehran', 'vpnz4', 'customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'entryNET', 'OnlineForevers', 'EmKavpn', 
+    'vpn_tehran', 'vpnz4', 'customv2ray', 'vpnfail_v2ray', 'vpn_ioss', 'vmessorg', 'entryNET', 'OnlineForevers',
     'vmess_ir', 'vlessconfig', 'vistav2ray', 'vipv2rayngnp', 'v2rayvpn2', 'sinavm', 'xpnteam', 'proxymthub', 
     'v2rayroz', 'v2rayopen', 'v2rayngvpn', 'v2rayng_matsuri', 'v2rayng_fast', 'V2All', 'proxy_v2ray_meli',
     'v2pedia', 'sadoshockss', 'toxicvid', 'tehranargo', 'spikevpn', 'FG_Link', 'FreeNetAndProxy', 
     'privatevpns', 'outline_ir', 'mehrosaboran', 'marambashi', 'hope_net', 'zhicroid', 'saghi_proxy1'
 ]
 
-# Anti-rate-limit settings
-MIN_CHANNEL_DELAY = 3
-MAX_CHANNEL_DELAY = 8
-MAX_FLOOD_WAIT_TOLERATE = 300
-BATCH_SIZE = 10
-BATCH_PAUSE = 15
+# Anti-rate-limit settings (MUCH MORE CONSERVATIVE)
+MIN_CHANNEL_DELAY = 8   # Increased from 3
+MAX_CHANNEL_DELAY = 15  # Increased from 8
+MAX_FLOOD_WAIT_TOLERATE = 600  # Increased from 300 (now 10 minutes)
+BATCH_SIZE = 5          # Decreased from 10
+BATCH_PAUSE = 30        # Increased from 15
 
 # Databases and Active Files
 DATABASE_SNI = 'database_sni.txt'
@@ -632,7 +632,7 @@ async def main():
         with open(STATE_FILE, 'r') as f: 
             last_ids = json.load(f)
     
-    # ===== FIXED: Use StringSession directly (no file writing) =====
+    # Use StringSession directly (no file writing needed)
     client = TelegramClient(StringSession(SESSION_STRING), int(API_ID), API_HASH)
     newly_scraped_configs = set()
     new_latest_ids = {}
