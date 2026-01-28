@@ -39,7 +39,7 @@ DATABASE_SNI = 'database_sni.txt'
 DATABASE_IP = 'database_ip.txt'
 ACTIVE_FILE_SNI = 'active_sni_configs.txt'
 ACTIVE_FILE_IP = 'active_ip_configs.txt'
-MAX_ACTIVE_CONFIGS = 1111
+MAX_ACTIVE_CONFIGS = 2222
 
 # Categorized files (444 cap)
 OUTPUT_FILE_MAIN = 'mobo_net_subs.txt'
