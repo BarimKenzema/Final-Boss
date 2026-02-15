@@ -1,0 +1,126 @@
+name: Scrape Telegram for V2Ray Configs
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: telegram-scraper
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: pip install telethon geoip2 dnspython requests
+
+      - name: Run Python Scraper
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+        run: python main.py
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Commit and push changes
+        run: |
+          # Restore .github directory to prevent workflow permission errors
+          git checkout HEAD -- .github/ 2>/dev/null || true
+          
+          # Fetch latest remote state
+          git fetch origin main
+          
+          # Sync with remote
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse origin/main)
+          
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "⚠️ Local differs from remote, syncing..."
+            git reset origin/main
+          fi
+          
+          # Stage ONLY files that the script generates
+          git add latest_configs.txt 2>/dev/null || true
+          git add database/ 2>/dev/null || true
+          git add last_ids.json 2>/dev/null || true
+          git add protocols/ 2>/dev/null || true
+          git add networks/ 2>/dev/null || true
+          git add security/ 2>/dev/null || true
+          git add countries/ 2>/dev/null || true
+          git add special/ 2>/dev/null || true
+          
+          # Safety: Unstage any .github changes
+          git reset HEAD -- .github/ 2>/dev/null || true
+          
+          # Check if there are changes to commit
+          if git diff --cached --quiet; then
+            echo "ℹ️ No changes to commit"
+            exit 0
+          fi
+          
+          # Show what will be committed
+          echo "📋 Files to be committed:"
+          git diff --cached --name-only
+          
+          # Verify no workflow files are staged
+          if git diff --cached --name-only | grep -q "^\.github/"; then
+            echo "❌ ERROR: .github files in staging! Aborting."
+            exit 1
+          fi
+          
+          # Commit
+          TIMESTAMP=$(date -u +'%Y-%m-%d %H:%M UTC')
+          git commit -m "✅ Telegram Scraper Update ${TIMESTAMP}"
+          
+          # Push with retry
+          for attempt in 1 2 3; do
+            echo "Push attempt ${attempt}/3..."
+            
+            if git push origin main; then
+              echo "✅ Push successful!"
+              exit 0
+            else
+              echo "⚠️ Push failed, waiting 10 seconds..."
+              sleep 10
+              git fetch origin main
+              
+              if git rebase origin/main; then
+                echo "✅ Rebase successful"
+              else
+                git rebase --abort 2>/dev/null || true
+                git reset origin/main
+                
+                git add latest_configs.txt database/ last_ids.json 2>/dev/null || true
+                git add protocols/ networks/ security/ countries/ special/ 2>/dev/null || true
+                git reset HEAD -- .github/ 2>/dev/null || true
+                
+                if ! git diff --cached --quiet; then
+                  git commit -m "✅ Telegram Scraper Update ${TIMESTAMP} [retry ${attempt}]"
+                fi
+              fi
+            fi
+          done
+          
+          echo "❌ Failed to push after 3 attempts"
+          exit 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
