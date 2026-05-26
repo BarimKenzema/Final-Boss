@@ -2,6 +2,8 @@ name: Scrape Telegram for V2Ray Configs
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
 
 concurrency:
   group: telegram-scraper
