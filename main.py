@@ -15,7 +15,7 @@ API_HASH = os.environ.get('API_HASH')
 SESSION_STRING = os.environ.get('TELEGRAM_SESSION_STRING')
 
 TARGET_GROUPS = [
-    'letsproxys', 'MuteVpnN', 'ShadowProxy66', 'free_vpn02', 'falcunargo', 'FreakConfig', 'tazaxy', 'frekansmeli', 
+    'letsproxys', 'fastkanfig', 'MuteVpnN', 'ShadowProxy66', 'free_vpn02', 'falcunargo', 'FreakConfig', 'tazaxy', 'frekansmeli', 
     'DirectVPN', 'DailyV2RY', 'daily_configs', 'configpluse', 'ghalagyann', 'meli_proxyy', 'fixeror', 'FergalVpnMod', 
     'ghalagyann2', 'Leecher56', 'tigervpnorg', 'v2rayng_fars', 'Mrsoulb', 'mtproxy_lists', 'shankamil', 'prrofile_purple',
     'vpnplusee_free', 'GetConfigIR', 'Pro_v2rayShop', 'surfboardv2ray', 'V2rayBaaz', 'proxymtprotoir', 'V2ray_Alpha', 
